@@ -1,0 +1,26 @@
+# Пример systemd: /etc/systemd/system/socrates-backend.service
+#
+# sudo cp socrates-backend.service.example /etc/systemd/system/socrates-backend.service
+# Отредактируй пути и пользователя, затем:
+# sudo systemctl daemon-reload
+# sudo systemctl enable --now socrates-backend
+
+[Unit]
+Description=Socrates AI FastAPI backend
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/socrates/backend
+EnvironmentFile=/opt/socrates/backend/.env
+ExecStart=/opt/socrates/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=3
+
+# Безопасность: слушаем только localhost — наружу идёт только nginx
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

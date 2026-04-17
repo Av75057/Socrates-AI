@@ -12,15 +12,21 @@ const apiProxy = {
 export default defineConfig({
   plugins: [react()],
   server: {
-    /** Слушать все интерфейсы — доступ с других ПК/телефона в LAN: http://IP:5173 */
+    /** Слушать все интерфейсы — LAN и проброс с роутера на этот ПК */
     host: true,
     port: 5173,
+    /**
+     * Иначе Vite отвечает 403 для Host = домен/DDNS/вход с интернета по имени, не по IP.
+     * @see https://vite.dev/config/server-options.html#server-allowedhosts
+     */
+    allowedHosts: true,
     proxy: apiProxy,
   },
   /** `vite preview` — тот же прокси, что и в dev, иначе fetch('/api/chat') падает с NetworkError */
   preview: {
     host: true,
     port: 4173,
+    allowedHosts: true,
     proxy: apiProxy,
   },
 });
