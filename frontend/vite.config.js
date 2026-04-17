@@ -12,10 +12,15 @@ const apiProxy = {
 export default defineConfig({
   plugins: [react()],
   server: {
+    /** Слушать все интерфейсы — доступ с других ПК/телефона в LAN: http://IP:5173 */
+    host: true,
+    port: 5173,
     proxy: apiProxy,
   },
   /** `vite preview` — тот же прокси, что и в dev, иначе fetch('/api/chat') падает с NetworkError */
   preview: {
+    host: true,
+    port: 4173,
     proxy: apiProxy,
   },
 });
