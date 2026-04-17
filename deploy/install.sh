@@ -56,6 +56,11 @@ if [[ -f "${IP_CONF}" ]]; then
   echo "==> Используется готовый конфиг: deploy/nginx-${DOMAIN}.conf"
 fi
 
+PUBLIC_PORT=""
+if [[ -f "${IP_CONF}" ]] && grep -qE 'listen[[:space:]]+5173' "${IP_CONF}"; then
+  PUBLIC_PORT=":5173"
+fi
+
 # --- Бэкенд: venv ---
 if [[ ! -x "${REPO_ROOT}/backend/.venv/bin/uvicorn" ]]; then
   echo "==> Создаю venv и ставлю зависимости backend..."
@@ -118,8 +123,11 @@ sudo systemctl restart socrates-backend
 
 echo ""
 echo "==> Готово."
-echo "    Сайт:     http://${DOMAIN}/"
-echo "    Чат:      http://${DOMAIN}/app"
+echo "    Сайт:     http://${DOMAIN}${PUBLIC_PORT}/"
+echo "    Чат:      http://${DOMAIN}${PUBLIC_PORT}/app"
+if [[ -n "${PUBLIC_PORT}" ]]; then
+  echo "    Роутер:   проброс внешний TCP 5173 → этот ПК:5173 · sudo ufw allow 5173/tcp"
+fi
 echo "    Здоровье API: curl -s http://127.0.0.1:8000/health"
 echo ""
 if [[ "${DOMAIN}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
