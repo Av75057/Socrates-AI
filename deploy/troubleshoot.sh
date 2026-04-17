@@ -48,6 +48,20 @@ else
 fi
 
 echo ""
+echo "=== 7. Внешний доступ (CGNAT / VPN / не тот IP) ==="
+PUB1="$(curl -4 -sS --max-time 5 https://ifconfig.me/ip 2>/dev/null || echo "?")"
+PUB2="$(curl -4 -sS --max-time 5 https://api.ipify.org 2>/dev/null || echo "?")"
+echo "Публичный IPv4 (с этой машины): ifconfig.me → ${PUB1}   ipify → ${PUB2}"
+echo "Маршрут в интернет:"
+ip -4 route get 1.1.1.1 2>/dev/null || true
+echo "Локальные IPv4 (не loopback):"
+ip -4 -br addr 2>/dev/null | grep -v '^lo ' || true
+echo ""
+echo "Сверь в админке роутера: WAN / Интернет IPv4 должен совпадать с числом выше."
+echo "Если на роутере WAN = 10.x / 100.64–100.127 / 172.16–31 — это CGNAT: входящий проброс с интернета не заработает (нужен белый IP у провайдера или туннель)."
+echo "Если default route идёт через VPN (tun/wg/… или имя вроде WonderVPN) — на время проверки отключи VPN на ПК и проверь с LTE: http://${PUB1}:5173/"
+echo ""
+
 echo "=== Подсказки (извне не открывается) ==="
 echo "- Wi‑Fi дома → внешний IP часто не работает (hairpin NAT); проверь LTE/другую сеть."
 echo "- Роутер: проброс TCP внешний 5173 → IP_этого_ПК:5173"
