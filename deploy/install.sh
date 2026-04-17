@@ -24,8 +24,9 @@ for arg in "$@"; do
 done
 
 if [[ -z "${DOMAIN}" ]]; then
-  echo "Использование: $0 [--install-deps] ваш-домен.ru"
-  echo "Пример: $0 app.example.com"
+  echo "Использование: $0 [--install-deps] домен.ru | публичный-IP"
+  echo "Примеры: $0 app.example.com"
+  echo "         $0 128.0.133.250"
   exit 1
 fi
 
@@ -45,8 +46,15 @@ if ! command -v nginx >/dev/null 2>&1; then
 fi
 
 echo "==> Репозиторий: ${REPO_ROOT}"
-echo "==> Домен (server_name): ${DOMAIN}"
+echo "==> server_name: ${DOMAIN}"
 echo "==> Пользователь сервиса: ${DEPLOY_USER}"
+
+IP_CONF="${REPO_ROOT}/deploy/nginx-${DOMAIN}.conf"
+USE_IP_FILE=false
+if [[ -f "${IP_CONF}" ]]; then
+  USE_IP_FILE=true
+  echo "==> Используется готовый конфиг: deploy/nginx-${DOMAIN}.conf"
+fi
 
 # --- Бэкенд: venv ---
 if [[ ! -x "${REPO_ROOT}/backend/.venv/bin/uvicorn" ]]; then
@@ -70,8 +78,12 @@ sudo rsync -a --delete "${REPO_ROOT}/frontend/dist/" /var/www/socrates/dist/
 
 # --- nginx ---
 echo "==> Настраиваю nginx..."
-sudo cp "${REPO_ROOT}/deploy/nginx-socrates.conf.example" /etc/nginx/sites-available/socrates
-sudo sed -i "s/ПОДСТАВЬ_ДОМЕН.example/${DOMAIN}/g" /etc/nginx/sites-available/socrates
+if [[ "${USE_IP_FILE}" == true ]]; then
+  sudo cp "${IP_CONF}" /etc/nginx/sites-available/socrates
+else
+  sudo cp "${REPO_ROOT}/deploy/nginx-socrates.conf.example" /etc/nginx/sites-available/socrates
+  sudo sed -i "s/ПОДСТАВЬ_ДОМЕН.example/${DOMAIN}/g" /etc/nginx/sites-available/socrates
+fi
 sudo ln -sf /etc/nginx/sites-available/socrates /etc/nginx/sites-enabled/
 if [[ -f /etc/nginx/sites-enabled/default ]]; then
   sudo rm -f /etc/nginx/sites-enabled/default
@@ -110,6 +122,10 @@ echo "    Сайт:     http://${DOMAIN}/"
 echo "    Чат:      http://${DOMAIN}/app"
 echo "    Здоровье API: curl -s http://127.0.0.1:8000/health"
 echo ""
-echo "    HTTPS:    sudo apt install -y certbot python3-certbot-nginx && sudo certbot --nginx -d ${DOMAIN}"
+if [[ "${DOMAIN}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "    HTTPS:    для голого IP Let's Encrypt обычно не выдаёт сертификат. Позже подключи домен и: sudo certbot --nginx -d домен.ru"
+else
+  echo "    HTTPS:    sudo apt install -y certbot python3-certbot-nginx && sudo certbot --nginx -d ${DOMAIN}"
+fi
 echo "    Логи:     journalctl -u socrates-backend -f"
 sudo systemctl --no-pager -l status socrates-backend || true

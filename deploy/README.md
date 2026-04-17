@@ -2,6 +2,21 @@
 
 Схема: **nginx** отдаёт статику из `frontend/dist` и проксирует `/api/` на **uvicorn** (`127.0.0.1:8000`). Бэкенд в интернет не торчит — только через nginx.
 
+## Публичный IP без домена (пример 128.0.133.250)
+
+В репозитории есть готовый **`deploy/nginx-128.0.133.250.conf`** — `server_name` и `listen` под этот IP.
+
+```bash
+./deploy/install.sh 128.0.133.250
+```
+
+Сайт: **http://128.0.133.250/** · чат: **http://128.0.133.250/app**  
+HTTPS через Let’s Encrypt для «голого» IP обычно недоступен — позже подключи домен и certbot.
+
+Если когда-нибудь откроешь фронт и API с **разных** origin’ов, в `backend/.env` задай `CORS_ORIGINS` (см. `.env.example`). Через nginx с одного IP обычно не нужно.
+
+---
+
 ## Автоматическая установка (рекомендуется)
 
 Из корня репозитория, **без** `sudo` в начале:
@@ -9,7 +24,9 @@
 ```bash
 chmod +x deploy/install.sh
 ./deploy/install.sh твой-домен.ru
-# при необходимости: ./deploy/install.sh --install-deps твой-домен.ru
+# или с IP:
+./deploy/install.sh 128.0.133.250
+# при необходимости: ./deploy/install.sh --install-deps ...
 ```
 
 Скрипт: venv, `npm ci && npm run build`, копирование в `/var/www/socrates`, nginx, systemd `socrates-backend`. Потом добавь ключ в `backend/.env` и при необходимости `sudo systemctl restart socrates-backend`.
