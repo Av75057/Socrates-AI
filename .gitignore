@@ -1,0 +1,34 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+backend/.venv/
+backend/**/__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+*.egg
+
+# Node
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Старый пакет в корне workspace (не backend/app)
+/app/
+extensions/
+projects/
+skills-cursor/
+plugins/
+ai-tracking/
+argv.json
+ide_state.json
