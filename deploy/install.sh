@@ -96,6 +96,13 @@ fi
 sudo nginx -t
 sudo systemctl reload nginx
 
+CODE="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 3 "http://127.0.0.1${PUBLIC_PORT:-}/" 2>/dev/null || echo "000")"
+if [[ "${CODE}" == "200" ]]; then
+  echo "==> Локальная проверка: http://127.0.0.1${PUBLIC_PORT:-}/ → HTTP ${CODE}"
+else
+  echo "!!! Локально ответ HTTP ${CODE} (ожидалось 200). Запусти: ./deploy/troubleshoot.sh"
+fi
+
 # --- systemd ---
 echo "==> systemd: socrates-backend..."
 sudo tee /etc/systemd/system/socrates-backend.service >/dev/null <<EOF
