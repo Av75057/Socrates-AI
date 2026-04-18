@@ -36,6 +36,7 @@ import TutorModeSelector from "../components/pedagogy/TutorModeSelector.jsx";
 import DifficultyIndicator from "../components/pedagogy/DifficultyIndicator.jsx";
 import FallacyNotification from "../components/pedagogy/FallacyNotification.jsx";
 import HintButton from "../components/pedagogy/HintButton.jsx";
+import { buildConnectionErrorHint } from "../utils/connectionErrorHint.js";
 import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxMetrics.js";
 
 async function postChat(sessionId, message, action) {
@@ -352,7 +353,7 @@ export default function ChatPage() {
       } catch (e) {
         const msg =
           e instanceof TypeError
-            ? "Не удаётся связаться с сервером. Запусти бэкенд: cd backend && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000. Если открываешь собранный фронт без прокси — в frontend/.env задай VITE_API_URL=http://127.0.0.1:8000"
+            ? `Не удаётся связаться с сервером. ${buildConnectionErrorHint()}`
             : e.message;
         addMessage("assistant", `Ошибка: ${msg}`);
       } finally {
