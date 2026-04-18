@@ -5,11 +5,7 @@ import UserMemoryPanel from "../UserMemoryPanel.jsx";
 import SkillTree from "../SkillTree.jsx";
 import ThinkingPanel from "../ThinkingPanel.jsx";
 import { getThinkingLevel } from "../../utils/feedbackHeuristics.js";
-import {
-  inferSkillTrackId,
-  topicImpliesMath,
-  topicImpliesPhysics,
-} from "../../utils/subjectTrack.js";
+import { skillTreeTopicMismatch } from "../../utils/subjectTrack.js";
 
 const TIPS = [
   "Один вопрос лучше, чем готовый ответ.",
@@ -31,11 +27,7 @@ function MindMapVisual({ topic, skillTree }) {
   const centerRaw = topicTrim || track || "Тема";
   const center = centerRaw.length > 20 ? `${centerRaw.slice(0, 18)}…` : centerRaw;
 
-  const tid = inferSkillTrackId(skillTree);
-  const trackMismatch =
-    Boolean(topicTrim) &&
-    ((topicImpliesMath(topicTrim) && tid === "physics") ||
-      (topicImpliesPhysics(topicTrim) && tid === "math"));
+  const trackMismatch = skillTreeTopicMismatch(topicTrim, skillTree);
 
   const nodes = (trackMismatch ? [] : apiNodes).map((n) => ({
     id: n.id,
