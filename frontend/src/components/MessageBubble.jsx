@@ -15,7 +15,7 @@ export default function MessageBubble({ role, text }) {
       className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
     >
       <div
-        className={`max-w-[min(100%,42rem)] rounded-2xl px-4 py-3 text-base leading-relaxed shadow-xl ${
+        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-xl sm:max-w-[min(80%,42rem)] sm:text-base ${
           isUser
             ? "rounded-br-md bg-[#2563eb] text-white"
             : "rounded-bl-md border border-slate-600/50 bg-[#1e293b] text-slate-100"
@@ -26,7 +26,7 @@ export default function MessageBubble({ role, text }) {
             Socrates
           </div>
         ) : null}
-        <div className="whitespace-pre-wrap">{text}</div>
+        <div className="whitespace-pre-wrap break-words">{text}</div>
       </div>
     </motion.div>
   );

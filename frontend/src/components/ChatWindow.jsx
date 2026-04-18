@@ -23,8 +23,8 @@ export default function ChatWindow({
   }, [messages, loading, feedback, microFeedback, simplerBanner, idleHint]);
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-      <div className="mx-auto flex max-w-3xl flex-col gap-3">
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 max-lg:pb-[calc(13.5rem+env(safe-area-inset-bottom))] lg:pb-4">
+      <div className="mx-auto flex max-w-3xl flex-col gap-3 pb-2">
         <AnimatePresence>
           {feedback ? (
             <motion.div
@@ -92,7 +92,7 @@ export default function ChatWindow({
               <button
                 type="button"
                 onClick={onIdleHintDismiss}
-                className="rounded-lg bg-cyan-500/20 px-2 py-1 text-[11px] font-medium hover:bg-cyan-500/30"
+                className="min-h-[44px] min-w-[44px] touch-manipulation rounded-lg bg-cyan-500/20 px-3 py-2 text-xs font-medium active:bg-cyan-500/30 [@media(hover:hover)]:hover:bg-cyan-500/30"
               >
                 Скрыть
               </button>

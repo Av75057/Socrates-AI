@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
 
 export default function InputBox({
   onSend,
@@ -19,42 +18,59 @@ export default function InputBox({
     setValue("");
   };
 
+  const sendPreset = (text) => {
+    if (loading || !canSend()) return;
+    onUserActivity?.();
+    onSend(text);
+  };
+
   return (
-    <div className="border-t border-slate-800/80 bg-[#0f172a]/95 px-4 py-3 backdrop-blur">
-      <div className="mx-auto flex max-w-3xl flex-col gap-2">
-        <div className="flex flex-wrap gap-2">
-          <motion.button
+    <div className="input-dock z-20 shrink-0 border-t border-slate-800 bg-[#020617]/98 px-3 pt-3 backdrop-blur max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:right-0 lg:relative lg:px-4">
+      <div className="mx-auto flex max-w-3xl flex-col gap-3">
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={loading || !canSend()}
+            onClick={() => sendPreset("Не знаю")}
+            className="min-h-[48px] touch-manipulation rounded-xl border border-slate-600/70 bg-[#0f172a] px-3 py-2.5 text-sm font-medium text-slate-200 active:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 [@media(hover:hover)]:hover:border-slate-500"
+          >
+            Не знаю
+          </button>
+          <button
+            type="button"
+            disabled={loading || !canSend()}
+            onClick={() => sendPreset("Дай пример")}
+            className="min-h-[48px] touch-manipulation rounded-xl border border-slate-600/70 bg-[#0f172a] px-3 py-2.5 text-sm font-medium text-slate-200 active:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 [@media(hover:hover)]:hover:border-slate-500"
+          >
+            Дай пример
+          </button>
+          <button
             type="button"
             disabled={loading}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
             onClick={() => {
               onUserActivity?.();
               onRequestHint();
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-500/20 disabled:opacity-40"
+            className="min-h-[48px] touch-manipulation rounded-xl border border-amber-500/45 bg-amber-500/15 px-3 py-2.5 text-sm font-semibold text-amber-100 active:bg-amber-500/25 disabled:opacity-40"
           >
-            <span aria-hidden>🧠</span>
-            Дай подсказку
-          </motion.button>
-          <motion.button
+            Подсказка
+          </button>
+          <button
             type="button"
             disabled={loading}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
             onClick={() => {
               onUserActivity?.();
               onGiveUp();
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-500/20 disabled:opacity-40"
+            className="min-h-[48px] touch-manipulation rounded-xl border border-rose-500/45 bg-rose-500/12 px-3 py-2.5 text-sm font-semibold text-rose-100 active:bg-rose-500/22 disabled:opacity-40"
           >
-            <span aria-hidden>🚨</span>
-            Объясни нормально
-          </motion.button>
+            Объясни проще
+          </button>
         </div>
+
         <div className="flex gap-2">
           <textarea
-            rows={2}
+            rows={1}
             value={value}
             onChange={(e) => {
               onUserActivity?.();
@@ -67,23 +83,23 @@ export default function InputBox({
                 submit();
               }
             }}
-            placeholder="Сформулируй мысль своими словами…"
+            placeholder="Напиши ответ…"
             disabled={loading}
-            className="min-h-[56px] flex-1 resize-y rounded-xl border border-slate-600/80 bg-[#1e293b] px-3 py-2.5 text-base text-slate-100 placeholder:text-slate-600 focus:border-blue-500/60 focus:outline-none focus:ring-2 focus:ring-blue-500/25 disabled:opacity-60"
+            className="min-h-[48px] max-h-[8rem] flex-1 resize-none rounded-xl border border-slate-600/80 bg-[#0f172a] px-4 py-3 text-base leading-snug text-white placeholder:text-slate-500 focus:border-blue-500/60 focus:outline-none focus:ring-2 focus:ring-blue-500/25 disabled:opacity-60"
           />
-          <motion.button
+          <button
             type="button"
             disabled={loading || !value.trim() || !canSend()}
-            whileHover={{ scale: loading || !value.trim() ? 1 : 1.02 }}
-            whileTap={{ scale: 0.97 }}
             onClick={submit}
-            className="self-end rounded-xl bg-[#2563eb] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Отправить"
+            className="flex h-[48px] min-w-[48px] shrink-0 touch-manipulation items-center justify-center self-end rounded-xl bg-blue-500 px-4 text-lg font-semibold text-white active:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-40 [@media(hover:hover)]:hover:bg-blue-600"
           >
-            Отправить
-          </motion.button>
+            →
+          </button>
         </div>
-        <p className="text-[11px] text-slate-600">
-          Enter — отправить · Shift+Enter — новая строка · пауза между отправками ~0.8 с
+
+        <p className="hidden pb-1 text-[11px] text-slate-600 sm:block">
+          Enter — отправить · Shift+Enter — новая строка · пауза ~0.8 с
         </p>
       </div>
     </div>

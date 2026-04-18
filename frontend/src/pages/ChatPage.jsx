@@ -98,6 +98,11 @@ export default function ChatPage() {
     if (dontKnowCount >= 3) setSimplerBanner(true);
   }, [dontKnowCount]);
 
+  useEffect(() => {
+    document.body.classList.add("chat-route-lock");
+    return () => document.body.classList.remove("chat-route-lock");
+  }, []);
+
   const run = useCallback(
     async (message, action = "none") => {
       if (!canSend()) return;
@@ -206,12 +211,12 @@ export default function ChatPage() {
   );
 
   return (
-    <div className="relative flex h-[100dvh] flex-col bg-[#0f172a] font-sans text-slate-100">
+    <div className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#0f172a] font-sans text-slate-100">
       <XpFloater amount={5} show={xpToast} />
-      <SessionHeader topic={topic} onNewSession={onNewSession} />
+      <SessionHeader topic={topic} onNewSession={onNewSession} xp={xp} streak={streak} />
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className="flex min-h-0 min-w-0 flex-[7] flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[7_1_0%]">
           <ModeIndicator mode={mode} attempts={attempts} frustration={frustration} />
           <ChatWindow
             messages={messages}

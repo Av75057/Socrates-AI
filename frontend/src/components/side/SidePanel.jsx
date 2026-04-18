@@ -62,7 +62,7 @@ export default function SidePanel({
   const level = getThinkingLevel(attempts);
 
   return (
-    <aside className="flex max-h-[100dvh] w-full flex-col gap-4 overflow-y-auto border-t border-slate-800/80 bg-[#0f172a] p-4 lg:w-[30%] lg:min-w-[260px] lg:max-w-md lg:border-l lg:border-t-0">
+    <aside className="hidden max-h-[100dvh] w-full flex-col gap-4 overflow-y-auto border-t border-slate-800/80 bg-[#0f172a] p-4 lg:flex lg:w-[30%] lg:min-w-[260px] lg:max-w-md lg:border-l lg:border-t-0">
       <TutorAvatar mood={avatarMood} whisperIndex={whisperIndex} />
 
       <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-3">
