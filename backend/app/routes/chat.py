@@ -145,7 +145,7 @@ async def chat(
 
     await save_pedagogy(r, body.session_id, pedagogy_state)
 
-    skill_tree = build_skill_tree_payload(prev_skill, dict(memory.skill_status))
+    skill_tree = build_skill_tree_payload(prev_skill, dict(memory.skill_status), state.topic)
 
     ut = state.user_type if state.user_type in ("lazy", "anxious", "thinker") else "lazy"
     md = memory.to_dict()

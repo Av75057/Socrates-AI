@@ -8,15 +8,49 @@ from pathlib import Path
 
 from app.models.user_memory import UserMemory
 
-_DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "skill_tree.json"
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
-@lru_cache
-def load_skill_tree_template() -> dict:
-    if not _DATA_PATH.is_file():
-        return {"track_id": "default", "track_title": "Навыки", "nodes": []}
-    with open(_DATA_PATH, encoding="utf-8") as f:
+def track_key_for_topic(topic: str) -> str:
+    """Выбор трека по теме: математика vs физика (и др.)."""
+    t = (topic or "").strip().lower()
+    math_markers = (
+        "математ",
+        "алгебр",
+        "геометр",
+        "уравнен",
+        "логарифм",
+        "производн",
+        "интеграл",
+        "тригонометр",
+        "процент",
+        "дроб",
+        "функц",
+        "график",
+        "многочлен",
+        "арифметик",
+    )
+    if any(m in t for m in math_markers):
+        return "math"
+    return "physics"
+
+
+@lru_cache(maxsize=4)
+def _load_track(track_key: str) -> dict:
+    files = {
+        "physics": _DATA_DIR / "skill_tree.json",
+        "math": _DATA_DIR / "skill_tree_math.json",
+    }
+    path = files.get(track_key, files["physics"])
+    if not path.is_file():
+        return {"track_id": track_key, "track_title": "Навыки", "nodes": []}
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_skill_tree_data(topic: str) -> dict:
+    """Шаблон дерева для текущей темы диалога."""
+    return _load_track(track_key_for_topic(topic))
 
 
 def topic_matches_user_topic(user_topic: str, node: dict) -> bool:
@@ -61,7 +95,7 @@ def merge_node_statuses(nodes: list[dict], skill_status: dict[str, str]) -> list
 
 def apply_skill_tree_updates(memory: UserMemory, topic: str, reply_mode: str) -> None:
     """Обновляет memory.skill_status по текущей теме и режиму ответа."""
-    data = load_skill_tree_template()
+    data = load_skill_tree_data(topic)
     nodes = list(data.get("nodes") or [])
     if not nodes or not (topic or "").strip():
         return
@@ -96,9 +130,10 @@ def apply_skill_tree_updates(memory: UserMemory, topic: str, reply_mode: str) ->
 def build_skill_tree_payload(
     skill_status_before: dict[str, str],
     skill_status_after: dict[str, str],
+    topic: str = "",
 ) -> dict:
     """Снимок для API + события unlock/complete."""
-    data = load_skill_tree_template()
+    data = load_skill_tree_data(topic)
     nodes_raw = list(data.get("nodes") or [])
     track_title = str(data.get("track_title") or "Навыки")
 
