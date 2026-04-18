@@ -33,6 +33,7 @@ class MemoryOut(BaseModel):
     progress: dict[str, str] = Field(default_factory=dict)
     user_type: str = "lazy"
     skill_status: dict[str, str] = Field(default_factory=dict)
+    thinking_profile: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChatResponse(BaseModel):
@@ -109,6 +110,7 @@ async def chat(
             progress=md["progress"],
             user_type=md["user_type"],
             skill_status=md.get("skill_status") or {},
+            thinking_profile=md.get("thinking_profile") or {},
         ),
         skill_tree=skill_tree,
     )

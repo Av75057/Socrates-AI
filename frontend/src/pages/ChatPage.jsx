@@ -20,6 +20,7 @@ import AssistPanel from "../components/AssistPanel.jsx";
 import UserStateBadge from "../components/UserStateBadge.jsx";
 import UserMemoryPanel from "../components/UserMemoryPanel.jsx";
 import SkillTree from "../components/SkillTree.jsx";
+import ThinkingPanel from "../components/ThinkingPanel.jsx";
 import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxMetrics.js";
 
 async function postChat(sessionId, message, action) {
@@ -299,6 +300,7 @@ export default function ChatPage() {
           <div className="mx-4 lg:hidden">
             <SkillTree skillTree={skillTree} />
           </div>
+          <ThinkingPanel profile={memory.thinking_profile} className="mx-4 lg:hidden" />
           <AssistPanel
             level={frustrationLevel}
             loading={loading}

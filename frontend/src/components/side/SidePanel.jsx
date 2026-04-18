@@ -3,6 +3,7 @@ import AnimatedProgressBar from "../AnimatedProgressBar.jsx";
 import TutorAvatar from "../TutorAvatar.jsx";
 import UserMemoryPanel from "../UserMemoryPanel.jsx";
 import SkillTree from "../SkillTree.jsx";
+import ThinkingPanel from "../ThinkingPanel.jsx";
 import { getThinkingLevel } from "../../utils/feedbackHeuristics.js";
 
 const TIPS = [
@@ -72,6 +73,8 @@ export default function SidePanel({
       <UserMemoryPanel memory={memory} />
 
       <SkillTree skillTree={skillTree} />
+
+      <ThinkingPanel profile={memory.thinking_profile} />
 
       <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-3">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Уровень</p>

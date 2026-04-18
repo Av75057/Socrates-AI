@@ -21,6 +21,7 @@ const EMPTY_MEMORY = {
   progress: {},
   user_type: "lazy",
   skill_status: {},
+  thinking_profile: {},
 };
 
 export const useChatStore = create((set, get) => ({
@@ -71,6 +72,10 @@ export const useChatStore = create((set, get) => ({
               skill_status:
                 payload.memory.skill_status && typeof payload.memory.skill_status === "object"
                   ? payload.memory.skill_status
+                  : {},
+              thinking_profile:
+                payload.memory.thinking_profile && typeof payload.memory.thinking_profile === "object"
+                  ? payload.memory.thinking_profile
                   : {},
             }
           : get().memory,
