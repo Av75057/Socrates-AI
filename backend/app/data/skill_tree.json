@@ -9,22 +9,16 @@
       "keywords": ["сила", "силу", "ньютон", "динамик", "f = ma", "закон ньютона"]
     },
     {
+      "id": "mass",
+      "title": "Масса",
+      "depends_on": [],
+      "keywords": ["масс", "килограмм", "инерц", "вес"]
+    },
+    {
       "id": "acceleration",
       "title": "Ускорение",
-      "depends_on": ["force"],
+      "depends_on": ["force", "mass"],
       "keywords": ["ускорен", "кинематик", "равноускорен"]
-    },
-    {
-      "id": "energy",
-      "title": "Энергия",
-      "depends_on": ["force"],
-      "keywords": ["энерг", "работа", "мощност", "кинетич", "потенциал"]
-    },
-    {
-      "id": "momentum",
-      "title": "Импульс",
-      "depends_on": ["force", "acceleration"],
-      "keywords": ["импульс", "столкнов", "закон сохранения импульса"]
     }
   ]
 }
