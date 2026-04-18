@@ -116,6 +116,11 @@ export default function ChatPage() {
 
   const lastActivityRef = useRef(Date.now());
 
+  const bumpActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+    setIdleHint(false);
+  }, []);
+
   const pushGamToast = useCallback((text, kind = "points") => {
     const id =
       typeof crypto !== "undefined" && crypto.randomUUID
@@ -151,11 +156,6 @@ export default function ChatPage() {
       if (typeof res.difficulty_level === "number") setPedDifficulty(res.difficulty_level);
     }
   }, [sessionId, topic, loading, canSend, bumpActivity, addMessage]);
-
-  const bumpActivity = useCallback(() => {
-    lastActivityRef.current = Date.now();
-    setIdleHint(false);
-  }, []);
 
   useEffect(() => {
     if (!feedback) return undefined;
@@ -488,9 +488,9 @@ export default function ChatPage() {
           <Link to="/profile/history" className="text-cyan-400 hover:underline">
             История
           </Link>
-          {authUser.role === "admin" ? (
-            <Link to="/admin/users" className="text-amber-400 hover:underline">
-              Админка
+          {String(authUser.role || "").toLowerCase() === "admin" ? (
+            <Link to="/admin" className="text-amber-400 hover:underline">
+              Админ-панель
             </Link>
           ) : null}
           <button

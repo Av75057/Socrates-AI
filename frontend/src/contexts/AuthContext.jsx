@@ -8,11 +8,11 @@ import {
 } from "react";
 import {
   clearToken,
-  getToken,
   loginRequest,
   persistToken,
   registerRequest,
 } from "../api/authApi.js";
+import { getToken } from "../api/client.js";
 import { fetchMe } from "../api/userApi.js";
 
 const AuthContext = createContext(null);

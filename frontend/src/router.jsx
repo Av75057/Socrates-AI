@@ -12,6 +12,7 @@ import HistoryPage from "./pages/HistoryPage.jsx";
 import ConversationViewPage from "./pages/ConversationViewPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import ForbiddenPage from "./pages/ForbiddenPage.jsx";
+import AdminHomePage from "./pages/AdminHomePage.jsx";
 import AdminUsersPage from "./pages/AdminUsersPage.jsx";
 import AdminStatsPage from "./pages/AdminStatsPage.jsx";
 
@@ -34,6 +35,14 @@ function NotFoundPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#020617] px-6 text-center text-slate-200">
       <p className="font-display text-lg font-semibold">Такой страницы нет</p>
+      <p className="mt-3 max-w-md text-sm text-slate-400">
+        Админ-панель: <a className="text-amber-400 underline hover:text-amber-300" href="/admin">/admin</a>{" "}
+        (нужен вход и роль admin). Чат:{" "}
+        <a className="text-cyan-400 underline hover:text-cyan-300" href="/app">
+          /app
+        </a>
+        .
+      </p>
       <a className="mt-6 text-emerald-400 underline underline-offset-4 hover:text-emerald-300" href="/">
         Кто ты? — выбор ученик / родитель
       </a>
@@ -55,6 +64,8 @@ export const router = createBrowserRouter(
     },
     { path: "/parent", element: <Navigate to="/for-parents" replace /> },
     { path: "/app", element: <ChatPage />, errorElement: <RouteErrorScreen /> },
+    { path: "/app/admin", element: <Navigate to="/admin" replace /> },
+    { path: "/app/admin/*", element: <Navigate to="/admin" replace /> },
     { path: "/login", element: <LoginPage /> },
     { path: "/register", element: <RegisterPage /> },
     { path: "/forbidden", element: <ForbiddenPage /> },
@@ -88,6 +99,14 @@ export const router = createBrowserRouter(
         <PrivateRoute>
           <SettingsPage />
         </PrivateRoute>
+      ),
+    },
+    {
+      path: "/admin",
+      element: (
+        <AdminRoute>
+          <AdminHomePage />
+        </AdminRoute>
       ),
     },
     {

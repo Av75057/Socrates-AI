@@ -23,7 +23,10 @@ export default function AdminStatsPage() {
 
   return (
     <div className="min-h-screen bg-[#0f172a] px-6 py-10 text-slate-100">
-      <nav className="mb-6 flex gap-4 text-sm">
+      <nav className="mb-6 flex flex-wrap gap-4 text-sm">
+        <Link to="/admin" className="text-slate-400 underline">
+          Админ — главная
+        </Link>
         <Link to="/admin/users" className="text-cyan-400 underline">
           Пользователи
         </Link>

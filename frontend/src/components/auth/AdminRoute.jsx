@@ -1,8 +1,9 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 
 export default function AdminRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -12,9 +13,9 @@ export default function AdminRoute({ children }) {
     );
   }
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
-  if (user.role !== "admin") {
+  if (String(user.role || "").toLowerCase() !== "admin") {
     return <Navigate to="/forbidden" replace />;
   }
   return children;

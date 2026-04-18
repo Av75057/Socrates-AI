@@ -27,10 +27,23 @@ DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/socrates
 
 ## Первый администратор
 
+Новый пользователь с ролью `admin`:
+
 ```bash
 cd backend
 .venv/bin/python scripts/create_admin.py admin@example.com ВашПароль123 --name Админ
 ```
+
+Уже зарегистрировались как обычный пользователь — выдать роль `admin` по email:
+
+```bash
+cd backend
+.venv/bin/python scripts/create_admin.py --promote ваш@email.ru
+```
+
+Опционально сменить пароль при повышении: добавьте новый пароль вторым аргументом после `--promote … email …`.
+
+После `--promote` обновите сессию во фронте (выход и вход или жёсткое обновление страницы), чтобы подтянулась роль.
 
 ## Архитектура данных
 

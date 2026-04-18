@@ -6,7 +6,13 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from || "/app";
+  const rawFrom = location.state?.from;
+  const from =
+    typeof rawFrom === "string"
+      ? rawFrom
+      : rawFrom && typeof rawFrom.pathname === "string"
+        ? rawFrom
+        : "/app";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -15,8 +21,17 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     try {
-      await login(email.trim(), password);
-      navigate(from, { replace: true });
+      const data = await login(email.trim(), password);
+      const isAdmin = String(data?.user?.role || "").toLowerCase() === "admin";
+      const adminDest =
+        typeof from === "string" && from.startsWith("/admin")
+          ? from
+          : "/admin";
+      if (isAdmin) {
+        navigate(adminDest, { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка входа");
     }

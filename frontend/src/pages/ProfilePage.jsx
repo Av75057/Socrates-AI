@@ -16,8 +16,8 @@ export default function ProfilePage() {
         <Link to="/profile/settings" className="text-cyan-400 underline">
           Настройки
         </Link>
-        {user?.role === "admin" ? (
-          <Link to="/admin/users" className="text-amber-400 underline">
+        {String(user?.role || "").toLowerCase() === "admin" ? (
+          <Link to="/admin" className="text-amber-400 underline">
             Админ-панель
           </Link>
         ) : null}

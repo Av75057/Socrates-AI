@@ -17,6 +17,12 @@ export default function LandingFooter() {
         <Link to="/app" className="text-slate-500 hover:text-slate-400">
           Приложение
         </Link>
+        <Link to="/login" className="text-slate-500 hover:text-slate-400">
+          Вход
+        </Link>
+        <Link to="/register" className="text-slate-500 hover:text-slate-400">
+          Регистрация
+        </Link>
       </p>
     </footer>
   );
