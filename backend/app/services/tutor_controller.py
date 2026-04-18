@@ -23,6 +23,11 @@ _TOPIC_PATTERNS = [
     re.compile(r"хочу\s+изучить\s+(?P<t>.+)", re.IGNORECASE),
     re.compile(r"тема:\s*(?P<t>.+)", re.IGNORECASE),
     re.compile(r"учим\s+(?P<t>.+)", re.IGNORECASE),
+    re.compile(
+        r"(?:выбрал|выбрала|выбираю|занимаемся|учимся)\s+(?P<t>.+)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"предмет\s*[:\-]?\s*(?P<t>.+)", re.IGNORECASE),
 ]
 
 _FRUSTRATION_MARKERS = ("не знаю", "хз", "без понятия")

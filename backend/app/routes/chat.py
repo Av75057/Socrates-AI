@@ -17,7 +17,7 @@ from app.services.model_router import ModelRouter
 from app.services.pedagogy_store import load_pedagogy, save_pedagogy
 from app.services.prompt_builder import _history_to_text
 from app.services.redis_state import load_state, save_state
-from app.services.skill_tree_manager import build_skill_tree_payload
+from app.services.skill_tree_manager import build_skill_tree_payload, resolve_track_hint
 from app.services.tutor_controller import TutorController
 
 router = APIRouter()
@@ -145,7 +145,10 @@ async def chat(
 
     await save_pedagogy(r, body.session_id, pedagogy_state)
 
-    skill_tree = build_skill_tree_payload(prev_skill, dict(memory.skill_status), state.topic)
+    tree_hint = resolve_track_hint(state.topic, memory, body.message)
+    skill_tree = build_skill_tree_payload(
+        prev_skill, dict(memory.skill_status), track_hint=tree_hint, topic=state.topic
+    )
 
     ut = state.user_type if state.user_type in ("lazy", "anxious", "thinker") else "lazy"
     md = memory.to_dict()

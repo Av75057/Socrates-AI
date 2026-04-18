@@ -139,7 +139,7 @@ def update_memory_after_turn(
     if len(memory.mistakes) > 40:
         memory.mistakes = memory.mistakes[-40:]
 
-    apply_skill_tree_updates(memory, topic, reply_mode)
+    apply_skill_tree_updates(memory, topic, reply_mode, user_message=user_message)
 
     old_avg = None
     if isinstance(memory.thinking_profile, dict):

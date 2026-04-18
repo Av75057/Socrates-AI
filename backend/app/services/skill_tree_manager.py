@@ -16,6 +16,8 @@ def track_key_for_topic(topic: str) -> str:
     t = (topic or "").strip().lower()
     math_markers = (
         "математ",
+        "матеш",
+        "вышмат",
         "алгебр",
         "геометр",
         "уравнен",
@@ -29,10 +31,34 @@ def track_key_for_topic(topic: str) -> str:
         "график",
         "многочлен",
         "арифметик",
+        "math",
+        "algebra",
+        "geometry",
+        "calculus",
+        "equation",
     )
     if any(m in t for m in math_markers):
         return "math"
     return "physics"
+
+
+def resolve_track_hint(state_topic: str, memory: UserMemory, user_message: str = "") -> str:
+    """
+    Собирает строку для выбора трека: тема сессии + недавние темы из памяти + последнее сообщение.
+    Нужна, чтобы при фразах вне шаблона «Хочу изучить…» или при смене предмета дерево не залипало на физике.
+    """
+    parts: list[str] = []
+    st = (state_topic or "").strip()
+    if st:
+        parts.append(st)
+    for tp in (memory.topics or [])[-8:]:
+        x = (tp or "").strip()
+        if x:
+            parts.append(x)
+    um = (user_message or "").strip()
+    if um:
+        parts.append(um[:500])
+    return " ".join(parts)
 
 
 @lru_cache(maxsize=4)
@@ -93,9 +119,12 @@ def merge_node_statuses(nodes: list[dict], skill_status: dict[str, str]) -> list
     return out
 
 
-def apply_skill_tree_updates(memory: UserMemory, topic: str, reply_mode: str) -> None:
+def apply_skill_tree_updates(
+    memory: UserMemory, topic: str, reply_mode: str, user_message: str = ""
+) -> None:
     """Обновляет memory.skill_status по текущей теме и режиму ответа."""
-    data = load_skill_tree_data(topic)
+    hint = resolve_track_hint(topic, memory, user_message)
+    data = load_skill_tree_data(hint)
     nodes = list(data.get("nodes") or [])
     if not nodes or not (topic or "").strip():
         return
@@ -130,10 +159,13 @@ def apply_skill_tree_updates(memory: UserMemory, topic: str, reply_mode: str) ->
 def build_skill_tree_payload(
     skill_status_before: dict[str, str],
     skill_status_after: dict[str, str],
+    *,
+    track_hint: str = "",
     topic: str = "",
 ) -> dict:
     """Снимок для API + события unlock/complete."""
-    data = load_skill_tree_data(topic)
+    hint = (track_hint or topic or "").strip()
+    data = load_skill_tree_data(hint)
     nodes_raw = list(data.get("nodes") or [])
     track_title = str(data.get("track_title") or "Навыки")
 
