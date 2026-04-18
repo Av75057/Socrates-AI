@@ -41,7 +41,7 @@ export default function AudienceSelect() {
           Я ученик
         </Link>
         <Link
-          to="/parent"
+          to="/for-parents"
           className="min-h-[52px] flex-1 touch-manipulation rounded-2xl bg-emerald-600 px-6 py-4 text-center text-base font-semibold text-white shadow-lg shadow-emerald-900/30 transition active:scale-[0.98] sm:flex-initial sm:min-w-[200px] [@media(hover:hover)]:hover:bg-emerald-500"
         >
           Я родитель

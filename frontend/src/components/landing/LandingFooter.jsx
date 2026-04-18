@@ -11,7 +11,7 @@ export default function LandingFooter() {
         <Link to="/student" className="text-slate-500 hover:text-slate-400">
           Ученикам
         </Link>
-        <Link to="/parent" className="text-slate-500 hover:text-slate-400">
+        <Link to="/for-parents" className="text-slate-500 hover:text-slate-400">
           Родителям
         </Link>
         <Link to="/app" className="text-slate-500 hover:text-slate-400">
