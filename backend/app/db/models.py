@@ -1,0 +1,145 @@
+"""ORM-модели PostgreSQL / SQLite."""
+
+from __future__ import annotations
+
+import enum
+from datetime import date, datetime, timezone
+
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy import JSON
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+JSONType = JSON
+
+
+class UserRole(str, enum.Enum):
+    user = "user"
+    admin = "admin"
+
+
+class MessageRole(str, enum.Enum):
+    user = "user"
+    tutor = "tutor"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(32), default="user", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    settings: Mapped[UserSettings] = relationship(
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    conversations: Mapped[list[Conversation]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    gamification: Mapped[GamificationProgress | None] = relationship(
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_user_settings_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    tutor_mode: Mapped[str] = mapped_column(String(32), default="friendly", nullable=False)
+    theme: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="settings")
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(512), default="Новый диалог", nullable=False)
+    session_key: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    last_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    user: Mapped[User] = relationship(back_populates="conversations")
+    messages: Mapped[list[Message]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="Message.created_at",
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    fallacy_detected: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class GamificationProgress(Base):
+    __tablename__ = "gamification_progress"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    wisdom_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    achievements: Mapped[list] = mapped_column(JSONType, nullable=False)
+    streak_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_daily_challenge_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    extra_state: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="gamification")

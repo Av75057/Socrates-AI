@@ -4,9 +4,13 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
+from app.api.deps_auth import get_current_user_optional
+from app.db.models import User
+from app.db.session import SessionLocal
 from app.deps import redis_dep
-from app.models.pedagogy import PedagogyTurnContext
+from app.models.pedagogy import PedagogyTurnContext, TutorMode
 from app.services.cheat_detector import is_cheating
 from app.services.difficulty_adjuster import apply_after_user_turn, apply_hint_penalty
 from app.services.fallacy_detector import analyze_response
@@ -24,6 +28,8 @@ from app.services.skill_tree_manager import (
     resolve_track_hint,
 )
 from app.services.tutor_controller import TutorController
+from app.services.conversation_db import append_messages, get_owned_conversation
+from app.services.user_settings_db import get_tutor_mode
 
 router = APIRouter()
 
@@ -39,6 +45,10 @@ class ChatRequest(BaseModel):
     message: str = ""
     session_id: str = Field(..., min_length=1, max_length=128)
     action: Literal["none", "hint", "give_up"] = "none"
+    conversation_id: int | None = Field(
+        None,
+        description="ID диалога в БД (только для авторизованных; session_id = session_key диалога)",
+    )
     memory_user_id: str | None = Field(
         None,
         max_length=128,
@@ -95,12 +105,46 @@ def _line_for_memory_update(body: ChatRequest) -> str:
 async def chat(
     body: ChatRequest,
     r=Depends(redis_dep),
+    db_user: User | None = Depends(get_current_user_optional),
 ):
+    if body.conversation_id is not None:
+        if db_user is None:
+            raise HTTPException(status_code=401, detail="Authentication required when conversation_id is set")
+
+        def _verify_conv() -> str | None:
+            with SessionLocal() as db:
+                c = get_owned_conversation(db, db_user.id, body.conversation_id)
+                return c.session_key if c else None
+
+        sk = await run_in_threadpool(_verify_conv)
+        if sk is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        if body.session_id != sk:
+            raise HTTPException(
+                status_code=400,
+                detail="session_id must equal conversation.session_key for this conversation",
+            )
+
     state = await load_state(r, body.session_id)
-    mid = (body.memory_user_id or body.session_id).strip()
+    if db_user:
+        mid = str(db_user.id)
+    else:
+        mid = (body.memory_user_id or body.session_id).strip()
     memory = await load_memory(r, mid)
     prev_skill = dict(memory.skill_status)
     pedagogy_state = await load_pedagogy(r, body.session_id)
+
+    if db_user:
+
+        def _load_tm() -> str:
+            with SessionLocal() as db:
+                return get_tutor_mode(db, db_user.id)
+
+        tm = await run_in_threadpool(_load_tm)
+        try:
+            pedagogy_state.mode = TutorMode(tm)
+        except ValueError:
+            pass
 
     msg_stripped = (body.message or "").strip()
     cheat = bool(msg_stripped and is_cheating(msg_stripped))
@@ -179,6 +223,31 @@ async def chat(
         last_response_depth=round(pedagogy_state.last_response_depth, 3),
         fallacy=fal,
     )
+
+    if db_user and body.conversation_id and not cheat and not idle_turn:
+        user_line = (
+            msg_stripped
+            if body.action == "none" and msg_stripped
+            else _line_for_memory_update(body)
+        )
+        fallacy_payload: dict[str, Any] | None = None
+        if analysis:
+            fallacy_payload = {
+                "has_fallacy": bool(analysis.get("has_fallacy")),
+                "fallacy_type": analysis.get("fallacy_type"),
+                "fallacy_description": analysis.get("fallacy_description"),
+                "suggestion": analysis.get("suggestion"),
+                "depth_combined": analysis.get("depth_combined"),
+            }
+        cid = body.conversation_id
+        uid = db_user.id
+        rep = reply
+
+        def _persist_turn() -> None:
+            with SessionLocal() as db:
+                append_messages(db, cid, uid, user_line, rep, fallacy_payload)
+
+        await run_in_threadpool(_persist_turn)
 
     return ChatResponse(
         reply=reply,

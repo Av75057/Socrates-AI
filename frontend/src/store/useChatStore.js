@@ -37,6 +37,8 @@ export const useChatStore = create((set, get) => ({
   topic: "",
   lastSendAt: 0,
   sessionId: getOrCreateSessionId(),
+  /** ID диалога в БД (только для авторизованных) */
+  conversationId: null,
 
   xp: 0,
   streak: 0,
@@ -154,6 +156,7 @@ export const useChatStore = create((set, get) => ({
       dontKnowCount: 0,
       memory: { ...EMPTY_MEMORY },
       skillTree: null,
+      conversationId: null,
     });
   },
 
@@ -163,4 +166,26 @@ export const useChatStore = create((set, get) => ({
   },
 
   markSent: () => set({ lastSendAt: Date.now() }),
+
+  /**
+   * Привязать чат к диалогу в БД (session_key = sessionId для Redis).
+   * @param {number|null} conversationId
+   * @param {string} sessionId
+   * @param {{ id: string, role: string, text: string }[]} [initialMessages]
+   */
+  setActiveConversation: (conversationId, sessionId, initialMessages = []) => {
+    localStorage.setItem("socrates_session_id", sessionId);
+    return set({
+      conversationId,
+      sessionId,
+      messages: initialMessages,
+      mode: "question",
+      attempts: 0,
+      frustration: 0,
+      frustrationLevel: 0,
+      topic: "",
+      skillTree: null,
+      memory: { ...EMPTY_MEMORY },
+    });
+  },
 }));

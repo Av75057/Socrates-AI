@@ -7,7 +7,11 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
+from app.api.deps_auth import get_current_user_optional
+from app.db.models import User
+from app.db.session import SessionLocal
 from app.deps import redis_dep
 from app.models.gamification import (
     ACHIEVEMENTS,
@@ -18,6 +22,7 @@ from app.models.gamification import (
     reset_session_counters,
     state_to_public,
 )
+from app.services.db_gamification import apply_redis_state_to_db
 from app.services.gamification_store import load_progress, save_progress
 
 router = APIRouter()
@@ -55,7 +60,11 @@ async def get_progress(session_id: str, r=Depends(redis_dep)):
 
 
 @router.post("/action", response_model=GamificationActionResponse)
-async def post_action(body: GamificationActionBody, r=Depends(redis_dep)):
+async def post_action(
+    body: GamificationActionBody,
+    r=Depends(redis_dep),
+    db_user: User | None = Depends(get_current_user_optional),
+):
     state = await load_progress(r, body.session_id)
     today = _utc_today()
     ensure_challenge_day(state, today)
@@ -69,6 +78,13 @@ async def post_action(body: GamificationActionBody, r=Depends(redis_dep)):
         toasts.extend(t)
 
     await save_progress(r, body.session_id, state)
+    if db_user:
+
+        def _sync() -> None:
+            with SessionLocal() as db:
+                apply_redis_state_to_db(db, db_user.id, state)
+
+        await run_in_threadpool(_sync)
     return GamificationActionResponse(
         progress=state_to_public(state),
         new_achievements=new_ach,

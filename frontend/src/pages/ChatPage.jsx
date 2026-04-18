@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import ChatWindow from "../components/ChatWindow.jsx";
 import InputBox from "../components/InputBox.jsx";
 import ModeIndicator from "../components/ModeIndicator.jsx";
@@ -14,8 +15,10 @@ import {
   shouldShowAlmostUnderstood,
   shouldShowVeryClose,
 } from "../utils/learningHints.js";
-import { getChatUrl } from "../config/api.js";
+import { apiFetch } from "../api/client.js";
+import { createConversation } from "../api/userApi.js";
 import { getMemoryUserId } from "../config/memoryUser.js";
+import { useAuth } from "../contexts/AuthContext.jsx";
 import AssistPanel from "../components/AssistPanel.jsx";
 import UserStateBadge from "../components/UserStateBadge.jsx";
 import UserMemoryPanel from "../components/UserMemoryPanel.jsx";
@@ -39,16 +42,17 @@ import HintButton from "../components/pedagogy/HintButton.jsx";
 import { buildConnectionErrorHint } from "../utils/connectionErrorHint.js";
 import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxMetrics.js";
 
-async function postChat(sessionId, message, action) {
-  const res = await fetch(getChatUrl(), {
+async function postChat(sessionId, message, action, conversationId) {
+  const payload = {
+    session_id: sessionId,
+    message,
+    action,
+    memory_user_id: getMemoryUserId(),
+  };
+  if (conversationId != null) payload.conversation_id = conversationId;
+  const res = await apiFetch("/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      session_id: sessionId,
-      message,
-      action,
-      memory_user_id: getMemoryUserId(),
-    }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -66,6 +70,9 @@ function deriveAvatarMood({ microFeedback, feedback, simplerBanner }) {
 }
 
 export default function ChatPage() {
+  const { user: authUser } = useAuth();
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const conversationId = useChatStore((s) => s.conversationId);
   const messages = useChatStore((s) => s.messages);
   const mode = useChatStore((s) => s.mode);
   const loading = useChatStore((s) => s.loading);
@@ -263,7 +270,12 @@ export default function ChatPage() {
       setLoading(true);
       const attemptsBefore = useChatStore.getState().attempts;
       try {
-        const data = await postChat(sessionId, trimmed, action);
+        const data = await postChat(
+          sessionId,
+          trimmed,
+          action,
+          useChatStore.getState().conversationId,
+        );
         addMessage("assistant", data.reply);
         setFromServer(data);
 
@@ -402,6 +414,23 @@ export default function ChatPage() {
     }
   };
 
+  const onNewAccountDialog = async () => {
+    if (!authUser) return;
+    try {
+      const c = await createConversation();
+      setFeedback(null);
+      setMicroFeedback(null);
+      setSimplerBanner(false);
+      setIdleHint(false);
+      setFallacyNotice(null);
+      resetProfileClock();
+      setActiveConversation(c.id, c.session_key, []);
+      void postGamificationAction(c.session_key, "new_dialog", {});
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Не удалось создать диалог");
+    }
+  };
+
   const avatarMood = useMemo(
     () =>
       deriveAvatarMood({
@@ -443,6 +472,41 @@ export default function ChatPage() {
           />
         }
       />
+      {!authUser ? (
+        <div className="mx-4 mt-2 rounded-lg border border-amber-600/40 bg-amber-950/30 px-3 py-2 text-center text-xs text-amber-100/95">
+          <Link to="/login" className="font-medium text-amber-300 underline">
+            Войдите
+          </Link>
+          , чтобы сохранять историю диалогов в аккаунте.
+        </div>
+      ) : null}
+      {authUser ? (
+        <div className="mx-4 mt-2 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-400">
+          <Link to="/profile" className="text-cyan-400 hover:underline">
+            Профиль
+          </Link>
+          <Link to="/profile/history" className="text-cyan-400 hover:underline">
+            История
+          </Link>
+          {authUser.role === "admin" ? (
+            <Link to="/admin/users" className="text-amber-400 hover:underline">
+              Админка
+            </Link>
+          ) : null}
+          <button
+            type="button"
+            onClick={onNewAccountDialog}
+            className="rounded-md border border-slate-600 px-2 py-1 text-slate-300 hover:bg-slate-800"
+          >
+            Новый диалог (сохранить в аккаунте)
+          </button>
+          {conversationId != null ? (
+            <span className="text-slate-500">Диалог #{conversationId}</span>
+          ) : (
+            <span className="text-amber-400/90">Гостевой Redis-сессия — нажмите, чтобы вести диалог в БД</span>
+          )}
+        </div>
+      ) : null}
       <DailyChallengeWidget
         text={dailyCh?.challenge_text}
         completed={!!dailyCh?.completed}

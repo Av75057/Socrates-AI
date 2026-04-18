@@ -14,6 +14,11 @@ class Settings(BaseSettings):
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:4173,http://127.0.0.1:4173"
     )
+    # SQLAlchemy URL: sqlite:///./socrates.db или postgresql+psycopg://user:pass@localhost/socrates
+    database_url: str = "sqlite:///./socrates.db"
+    jwt_secret: str = "change-me-use-long-random-string"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24
     # OpenRouter: ключ и опции также можно задать только через env (см. model_router.py).
 
 
