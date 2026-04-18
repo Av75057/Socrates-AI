@@ -18,6 +18,7 @@ from app.services.pedagogy_store import load_pedagogy, save_pedagogy
 from app.services.prompt_builder import _history_to_text
 from app.services.redis_state import load_state, save_state
 from app.services.skill_tree_manager import (
+    align_tree_hint_with_session_topic,
     build_skill_tree_payload,
     canonical_subject_topic,
     resolve_track_hint,
@@ -153,6 +154,7 @@ async def chat(
     subj = canonical_subject_topic(msg_stripped)
     if subj:
         tree_hint = f"{subj} {tree_hint}".strip()
+    tree_hint = align_tree_hint_with_session_topic(tree_hint, state.topic)
     skill_tree = build_skill_tree_payload(
         prev_skill, dict(memory.skill_status), track_hint=tree_hint, topic=state.topic
     )

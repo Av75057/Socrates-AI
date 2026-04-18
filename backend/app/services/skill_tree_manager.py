@@ -90,6 +90,17 @@ def resolve_track_hint(state_topic: str, memory: UserMemory, user_message: str =
     return " ".join(parts)
 
 
+def align_tree_hint_with_session_topic(tree_hint: str, session_topic: str) -> str:
+    """Если тема сессии math/physics, а hint из памяти ушёл в другой трек — добавляем тему в начало."""
+    a = (tree_hint or "").strip()
+    b = (session_topic or "").strip()
+    if not b:
+        return a
+    if track_key_for_topic(a) != track_key_for_topic(b):
+        return f"{b} {a}".strip()
+    return a
+
+
 @lru_cache(maxsize=4)
 def _load_track(track_key: str) -> dict:
     files = {
