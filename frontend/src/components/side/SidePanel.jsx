@@ -5,6 +5,11 @@ import UserMemoryPanel from "../UserMemoryPanel.jsx";
 import SkillTree from "../SkillTree.jsx";
 import ThinkingPanel from "../ThinkingPanel.jsx";
 import { getThinkingLevel } from "../../utils/feedbackHeuristics.js";
+import {
+  inferSkillTrackId,
+  topicImpliesMath,
+  topicImpliesPhysics,
+} from "../../utils/subjectTrack.js";
 
 const TIPS = [
   "Один вопрос лучше, чем готовый ответ.",
@@ -26,7 +31,13 @@ function MindMapVisual({ topic, skillTree }) {
   const centerRaw = topicTrim || track || "Тема";
   const center = centerRaw.length > 20 ? `${centerRaw.slice(0, 18)}…` : centerRaw;
 
-  const nodes = apiNodes.map((n) => ({
+  const tid = inferSkillTrackId(skillTree);
+  const trackMismatch =
+    Boolean(topicTrim) &&
+    ((topicImpliesMath(topicTrim) && tid === "physics") ||
+      (topicImpliesPhysics(topicTrim) && tid === "math"));
+
+  const nodes = (trackMismatch ? [] : apiNodes).map((n) => ({
     id: n.id,
     label: n.title,
     status: n.status || "locked",
@@ -35,7 +46,12 @@ function MindMapVisual({ topic, skillTree }) {
   return (
     <div className="rounded-xl border border-slate-700/60 bg-slate-900/40 p-3">
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Mind-map</p>
-      {nodes.length === 0 ? (
+      {trackMismatch ? (
+        <div className="text-center text-[11px] leading-snug text-slate-500">
+          <p className="mb-1.5 font-medium text-slate-400">{center}</p>
+          <p>Карта ещё от старого трека. Отправьте любое сообщение — подтянется нужный предмет.</p>
+        </div>
+      ) : nodes.length === 0 ? (
         <p className="text-center text-[11px] leading-snug text-slate-500">
           Здесь появится карта темы после ответа сервера. Например, напишите «математика» или «физика».
         </p>
@@ -92,7 +108,7 @@ export default function SidePanel({
 
       <UserMemoryPanel memory={memory} />
 
-      <SkillTree skillTree={skillTree} />
+      <SkillTree skillTree={skillTree} topic={topic} />
 
       <ThinkingPanel profile={memory.thinking_profile} />
 

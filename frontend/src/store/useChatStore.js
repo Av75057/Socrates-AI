@@ -152,6 +152,8 @@ export const useChatStore = create((set, get) => ({
       xp: 0,
       streak: 0,
       dontKnowCount: 0,
+      memory: { ...EMPTY_MEMORY },
+      skillTree: null,
     });
   },
 

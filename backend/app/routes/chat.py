@@ -17,7 +17,11 @@ from app.services.model_router import ModelRouter
 from app.services.pedagogy_store import load_pedagogy, save_pedagogy
 from app.services.prompt_builder import _history_to_text
 from app.services.redis_state import load_state, save_state
-from app.services.skill_tree_manager import build_skill_tree_payload, resolve_track_hint
+from app.services.skill_tree_manager import (
+    build_skill_tree_payload,
+    canonical_subject_topic,
+    resolve_track_hint,
+)
 from app.services.tutor_controller import TutorController
 
 router = APIRouter()
@@ -146,6 +150,9 @@ async def chat(
     await save_pedagogy(r, body.session_id, pedagogy_state)
 
     tree_hint = resolve_track_hint(state.topic, memory, body.message)
+    subj = canonical_subject_topic(msg_stripped)
+    if subj:
+        tree_hint = f"{subj} {tree_hint}".strip()
     skill_tree = build_skill_tree_payload(
         prev_skill, dict(memory.skill_status), track_hint=tree_hint, topic=state.topic
     )

@@ -455,7 +455,7 @@ export default function ChatPage() {
           <UserStateBadge type={userType} />
           <UserMemoryPanel memory={memory} className="mx-4 mt-0 lg:hidden" />
           <div className="mx-4 lg:hidden">
-            <SkillTree skillTree={skillTree} />
+            <SkillTree skillTree={skillTree} topic={topic} />
           </div>
           <ThinkingPanel profile={memory.thinking_profile} className="mx-4 lg:hidden" />
           <AssistPanel

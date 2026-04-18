@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { skillTreeTopicMismatch } from "../utils/subjectTrack.js";
 
 const STYLES = {
   completed: "border-emerald-500/50 bg-emerald-950/40 text-emerald-100",
@@ -7,11 +8,24 @@ const STYLES = {
   locked: "border-slate-700/80 bg-slate-900/50 text-slate-500",
 };
 
-export default function SkillTree({ skillTree, className = "" }) {
+export default function SkillTree({ skillTree, topic = "", className = "" }) {
   const trackTitle = skillTree?.track_title || "Навыки";
   const done = skillTree?.completed ?? 0;
   const total = skillTree?.total ?? 0;
-  const nodes = Array.isArray(skillTree?.nodes) ? skillTree.nodes : [];
+  const rawNodes = Array.isArray(skillTree?.nodes) ? skillTree.nodes : [];
+  const mismatch = skillTreeTopicMismatch(topic, skillTree);
+  const nodes = mismatch ? [] : rawNodes;
+
+  if (mismatch) {
+    return (
+      <div
+        className={`rounded-xl border border-dashed border-amber-700/50 bg-amber-950/20 p-3 text-center text-xs text-amber-100/90 ${className}`}
+      >
+        Тема «{(topic || "").trim() || "…"}» не совпадает с картой навыков на сервере. Отправьте ещё одно
+        сообщение — обновится математика или физика.
+      </div>
+    );
+  }
 
   if (!nodes.length) {
     return (
