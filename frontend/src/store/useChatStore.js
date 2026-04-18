@@ -22,6 +22,7 @@ export const useChatStore = create((set, get) => ({
   attempts: 0,
   frustration: 0,
   frustrationLevel: 0,
+  userType: "lazy",
   topic: "",
   lastSendAt: 0,
   sessionId: getOrCreateSessionId(),
@@ -39,6 +40,10 @@ export const useChatStore = create((set, get) => ({
         typeof payload.frustration_level === "number"
           ? payload.frustration_level
           : Math.min(3, payload.frustration ?? 0),
+      userType:
+        payload.user_type && ["lazy", "anxious", "thinker"].includes(payload.user_type)
+          ? payload.user_type
+          : "lazy",
       topic: payload.topic || "",
     }),
 
@@ -102,6 +107,7 @@ export const useChatStore = create((set, get) => ({
       attempts: 0,
       frustration: 0,
       frustrationLevel: 0,
+      userType: "lazy",
       topic: "",
       sessionId: getOrCreateSessionId(),
       xp: 0,

@@ -16,7 +16,8 @@ import {
 } from "../utils/learningHints.js";
 import { getChatUrl } from "../config/api.js";
 import AssistPanel from "../components/AssistPanel.jsx";
-import { bumpUxMetric } from "../utils/uxMetrics.js";
+import UserStateBadge from "../components/UserStateBadge.jsx";
+import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxMetrics.js";
 
 async function postChat(sessionId, message, action) {
   const res = await fetch(getChatUrl(), {
@@ -46,6 +47,7 @@ export default function ChatPage() {
   const attempts = useChatStore((s) => s.attempts);
   const frustration = useChatStore((s) => s.frustration);
   const frustrationLevel = useChatStore((s) => s.frustrationLevel);
+  const userType = useChatStore((s) => s.userType);
   const topic = useChatStore((s) => s.topic);
   const sessionId = useChatStore((s) => s.sessionId);
   const xp = useChatStore((s) => s.xp);
@@ -119,6 +121,10 @@ export default function ChatPage() {
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
+
+  useEffect(() => {
+    if (userType) recordProfileTime(userType);
+  }, [userType]);
 
   const run = useCallback(
     async (message, action = "none") => {
@@ -230,6 +236,7 @@ export default function ChatPage() {
       setSimplerBanner(false);
       setIdleHint(false);
       setXpToast(false);
+      resetProfileClock();
       resetSession();
     }
   };
@@ -252,6 +259,7 @@ export default function ChatPage() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[7_1_0%]">
           <ModeIndicator mode={mode} attempts={attempts} frustration={frustration} />
+          <UserStateBadge type={userType} />
           <AssistPanel
             level={frustrationLevel}
             loading={loading}
@@ -272,6 +280,7 @@ export default function ChatPage() {
             }}
           />
           <InputBox
+            userType={userType}
             onSend={onSend}
             loading={loading}
             canSend={canSend}

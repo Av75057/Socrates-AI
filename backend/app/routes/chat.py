@@ -24,6 +24,7 @@ class ChatResponse(BaseModel):
     attempts: int
     frustration: int
     frustration_level: int  # 0..3 для UI (анти-фрустрация)
+    user_type: str  # lazy | anxious | thinker
     topic: str
 
 
@@ -49,11 +50,13 @@ async def chat(
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     await save_state(r, body.session_id, state)
+    ut = state.user_type if state.user_type in ("lazy", "anxious", "thinker") else "lazy"
     return ChatResponse(
         reply=reply,
         mode=mode,
         attempts=state.attempts,
         frustration=state.frustration,
         frustration_level=min(3, state.frustration),
+        user_type=ut,
         topic=state.topic,
     )

@@ -11,6 +11,7 @@ from app.models.state import TutorState
 from app.services.cheat_detector import CHEAT_REPLY, is_cheating
 from app.services.model_router import ModelRouter
 from app.services.prompt_builder import build_prompt
+from app.services.user_profiler import detect_user_type
 
 ChatAction = Literal["none", "hint", "give_up"]
 
@@ -71,15 +72,31 @@ class TutorController:
         return state
 
     def decide_mode(self, state: TutorState) -> str:
-        if state.frustration >= 2:
+        ut = getattr(state, "user_type", "lazy") or "lazy"
+        if ut not in ("lazy", "anxious", "thinker"):
+            ut = "lazy"
+
+        fr_th = 3 if ut == "anxious" else 2
+        if state.frustration >= fr_th:
             return "hint"
 
         if state.attempts < 2:
             return "question"
 
+        if ut == "thinker":
+            if state.attempts < 5:
+                return "question"
+            if state.attempts < 8:
+                return "hint"
+            return "explain"
+
+        if ut == "lazy":
+            if state.attempts < 4:
+                return "hint"
+            return "explain"
+
         if state.attempts < 4:
             return "hint"
-
         return "explain"
 
     async def handle_turn(
@@ -99,8 +116,9 @@ class TutorController:
             state.mode = "explain"
             user_line = text or "(сдаюсь — нужно краткое объяснение и контрольный вопрос в конце)"
             if text:
+                state.user_type = detect_user_type(text, state.user_type)
                 _maybe_set_topic(state, text)
-            prompt = build_prompt(state.mode, state.topic, state.history)
+            prompt = build_prompt(state.mode, state.topic, state.history, state.user_type)
             reply = await self._router.generate(prompt, user_line, state.mode)
             state.history.append({"role": "user", "content": user_line})
             state.history.append({"role": "assistant", "content": reply})
@@ -110,10 +128,11 @@ class TutorController:
             hint_line = text or "(запрошена подсказка)"
             if text:
                 _maybe_set_topic(state, text)
+            state.user_type = detect_user_type(hint_line, state.user_type)
             self.update_state(state, hint_line)
             # Явный hint при кнопке (decide_mode мог оставить question при малых attempts)
             state.mode = "explain" if state.attempts >= 4 else "hint"
-            prompt = build_prompt(state.mode, state.topic, state.history)
+            prompt = build_prompt(state.mode, state.topic, state.history, state.user_type)
             reply = await self._router.generate(prompt, hint_line, state.mode)
             state.history.append({"role": "user", "content": hint_line})
             state.history.append({"role": "assistant", "content": reply})
@@ -123,8 +142,9 @@ class TutorController:
             return "Напиши сообщение или используй кнопки подсказки / сдаться.", state.mode
 
         _maybe_set_topic(state, text)
+        state.user_type = detect_user_type(text, state.user_type)
         self.update_state(state, text)
-        prompt = build_prompt(state.mode, state.topic, state.history)
+        prompt = build_prompt(state.mode, state.topic, state.history, state.user_type)
         reply = await self._router.generate(prompt, text, state.mode)
         state.history.append({"role": "user", "content": text})
         state.history.append({"role": "assistant", "content": reply})
