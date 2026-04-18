@@ -36,10 +36,39 @@ def track_key_for_topic(topic: str) -> str:
         "geometry",
         "calculus",
         "equation",
+        "матимат",
     )
     if any(m in t for m in math_markers):
         return "math"
     return "physics"
+
+
+def canonical_subject_topic(text: str) -> str:
+    """
+    Короткая метка темы сессии, если из фразы явно следует предмет.
+    Не вызывать для «пустых» фраз: иначе по умолчанию был бы только physics.
+    """
+    t = (text or "").strip().lower()
+    if not t:
+        return ""
+    if track_key_for_topic(t) == "math":
+        return "математика"
+    physics_markers = (
+        "физик",
+        "механик",
+        "ньютон",
+        "кинематик",
+        "динамик",
+        "импульс",
+        "энерги",
+        "оптик",
+        "термодинамик",
+        "электричеств",
+        "магнитн",
+    )
+    if any(p in t for p in physics_markers):
+        return "физика"
+    return ""
 
 
 def resolve_track_hint(state_topic: str, memory: UserMemory, user_message: str = "") -> str:
@@ -48,6 +77,9 @@ def resolve_track_hint(state_topic: str, memory: UserMemory, user_message: str =
     Нужна, чтобы при фразах вне шаблона «Хочу изучить…» или при смене предмета дерево не залипало на физике.
     """
     parts: list[str] = []
+    um = (user_message or "").strip()
+    if um:
+        parts.append(um[:500])
     st = (state_topic or "").strip()
     if st:
         parts.append(st)
@@ -55,9 +87,6 @@ def resolve_track_hint(state_topic: str, memory: UserMemory, user_message: str =
         x = (tp or "").strip()
         if x:
             parts.append(x)
-    um = (user_message or "").strip()
-    if um:
-        parts.append(um[:500])
     return " ".join(parts)
 
 

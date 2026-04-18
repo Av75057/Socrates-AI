@@ -14,6 +14,7 @@ from app.services.cheat_detector import CHEAT_REPLY, is_cheating
 from app.services.memory_manager import format_memory_for_prompt
 from app.services.model_router import ModelRouter
 from app.services.prompt_builder import build_prompt
+from app.services.skill_tree_manager import canonical_subject_topic
 from app.services.user_profiler import detect_user_type
 
 ChatAction = Literal["none", "hint", "give_up"]
@@ -50,6 +51,9 @@ def _maybe_set_topic(state: TutorState, user_text: str) -> None:
         if m:
             state.topic = m.group("t").strip().rstrip(".")
             return
+    subj = canonical_subject_topic(t)
+    if subj:
+        state.topic = subj
 
 
 class TutorController:

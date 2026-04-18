@@ -19,57 +19,56 @@ const LEAF_BY_STATUS = {
   locked: "border-slate-700 text-slate-600",
 };
 
-function MindMapVisual({ topic, attempts, skillTree }) {
+function MindMapVisual({ topic, skillTree }) {
   const apiNodes = Array.isArray(skillTree?.nodes) ? skillTree.nodes : [];
   const topicTrim = (topic || "").trim();
   const track = (skillTree?.track_title || "").trim();
   const centerRaw = topicTrim || track || "Тема";
   const center = centerRaw.length > 20 ? `${centerRaw.slice(0, 18)}…` : centerRaw;
 
-  const nodes =
-    apiNodes.length > 0
-      ? apiNodes.map((n) => ({
-          id: n.id,
-          label: n.title,
-          status: n.status || "locked",
-        }))
-      : [
-          { id: "a", label: "Сила", status: attempts >= 1 ? "available" : "locked" },
-          { id: "b", label: "Масса", status: attempts >= 2 ? "available" : "locked" },
-          { id: "c", label: "Ускорение", status: attempts >= 3 ? "available" : "locked" },
-        ];
+  const nodes = apiNodes.map((n) => ({
+    id: n.id,
+    label: n.title,
+    status: n.status || "locked",
+  }));
 
   return (
     <div className="rounded-xl border border-slate-700/60 bg-slate-900/40 p-3">
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Mind-map</p>
-      <div className="flex flex-col items-center gap-1 text-xs">
-        <motion.div
-          layout
-          className="rounded-lg border border-cyan-500/40 bg-[#1e293b] px-3 py-1.5 font-medium text-cyan-100"
-        >
-          {center}
-        </motion.div>
-        <div className="text-slate-600">↓</div>
-        <div className="flex flex-wrap justify-center gap-2">
-          {nodes.map((n) => {
-            const active = n.status !== "locked";
-            const ring = LEAF_BY_STATUS[n.status] || LEAF_BY_STATUS.locked;
-            return (
-              <motion.div
-                key={n.id}
-                initial={false}
-                animate={{
-                  opacity: active ? 1 : 0.35,
-                  scale: active ? 1 : 0.96,
-                }}
-                className={`rounded-md border px-2 py-1 ${ring}`}
-              >
-                {n.label}
-              </motion.div>
-            );
-          })}
+      {nodes.length === 0 ? (
+        <p className="text-center text-[11px] leading-snug text-slate-500">
+          Здесь появится карта темы после ответа сервера. Например, напишите «математика» или «физика».
+        </p>
+      ) : (
+        <div className="flex flex-col items-center gap-1 text-xs">
+          <motion.div
+            layout
+            className="rounded-lg border border-cyan-500/40 bg-[#1e293b] px-3 py-1.5 font-medium text-cyan-100"
+          >
+            {center}
+          </motion.div>
+          <div className="text-slate-600">↓</div>
+          <div className="flex flex-wrap justify-center gap-2">
+            {nodes.map((n) => {
+              const active = n.status !== "locked";
+              const ring = LEAF_BY_STATUS[n.status] || LEAF_BY_STATUS.locked;
+              return (
+                <motion.div
+                  key={n.id}
+                  initial={false}
+                  animate={{
+                    opacity: active ? 1 : 0.35,
+                    scale: active ? 1 : 0.96,
+                  }}
+                  className={`rounded-md border px-2 py-1 ${ring}`}
+                >
+                  {n.label}
+                </motion.div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -131,7 +130,7 @@ export default function SidePanel({
         </div>
       </div>
 
-      <MindMapVisual topic={topic} attempts={attempts} skillTree={skillTree} />
+      <MindMapVisual topic={topic} skillTree={skillTree} />
 
       <div className="rounded-xl border border-dashed border-slate-700/60 p-3">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Подсказки UX</p>
