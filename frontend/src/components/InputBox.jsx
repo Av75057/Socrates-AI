@@ -5,7 +5,9 @@ export default function InputBox({
   loading,
   canSend,
   onRequestHint,
+  onRequestExample,
   onGiveUp,
+  onQuickDontKnow,
   onUserActivity,
 }) {
   const [value, setValue] = useState("");
@@ -21,6 +23,11 @@ export default function InputBox({
   const sendPreset = (text) => {
     if (loading || !canSend()) return;
     onUserActivity?.();
+    if (text === "Не знаю") onQuickDontKnow?.();
+    if (text === "Дай пример") {
+      onRequestExample?.();
+      return;
+    }
     onSend(text);
   };
 

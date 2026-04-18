@@ -15,6 +15,8 @@ import {
   shouldShowVeryClose,
 } from "../utils/learningHints.js";
 import { getChatUrl } from "../config/api.js";
+import AssistPanel from "../components/AssistPanel.jsx";
+import { bumpUxMetric } from "../utils/uxMetrics.js";
 
 async function postChat(sessionId, message, action) {
   const res = await fetch(getChatUrl(), {
@@ -43,6 +45,7 @@ export default function ChatPage() {
   const loading = useChatStore((s) => s.loading);
   const attempts = useChatStore((s) => s.attempts);
   const frustration = useChatStore((s) => s.frustration);
+  const frustrationLevel = useChatStore((s) => s.frustrationLevel);
   const topic = useChatStore((s) => s.topic);
   const sessionId = useChatStore((s) => s.sessionId);
   const xp = useChatStore((s) => s.xp);
@@ -87,7 +90,7 @@ export default function ChatPage() {
     const id = setInterval(() => {
       if (loading) return;
       if (messages.length === 0) return;
-      if (Date.now() - lastActivityRef.current > 12500) {
+      if (Date.now() - lastActivityRef.current > 10000) {
         setIdleHint(true);
       }
     }, 1000);
@@ -103,6 +106,20 @@ export default function ChatPage() {
     return () => document.body.classList.remove("chat-route-lock");
   }, []);
 
+  useEffect(() => {
+    const onLeave = () => bumpUxMetric("tabAway");
+    window.addEventListener("beforeunload", onLeave);
+    return () => window.removeEventListener("beforeunload", onLeave);
+  }, []);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "hidden") bumpUxMetric("chatBackgrounded");
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
   const run = useCallback(
     async (message, action = "none") => {
       if (!canSend()) return;
@@ -113,7 +130,7 @@ export default function ChatPage() {
       if (action === "none" && trimmed) {
         addMessage("user", trimmed);
       } else if (action === "hint") {
-        addMessage("user", "Дай подсказку");
+        addMessage("user", trimmed || "Дай подсказку");
         resetDontKnowCount();
         setSimplerBanner(false);
       } else if (action === "give_up") {
@@ -135,29 +152,36 @@ export default function ChatPage() {
         const dk = useChatStore.getState().dontKnowCount;
         if (dk >= 3) setSimplerBanner(true);
 
-        if (action === "none" && trimmed) {
-          if (isShortAnswer(trimmed, action)) setMicroFeedback("short");
-          else if (isStrongAnswer(trimmed, action)) setMicroFeedback("good");
+        const veryClose = shouldShowVeryClose({
+          action,
+          attempts: data.attempts,
+          mode: data.mode,
+        });
+        const almost = shouldShowAlmostUnderstood({
+          action,
+          userText: trimmed,
+          attempts: data.attempts,
+          frustration: data.frustration,
+          mode: data.mode,
+        });
+        const goodAttemptBanner =
+          action === "none" &&
+          trimmed &&
+          (data.frustration_level ?? 0) >= 1 &&
+          trimmed.length < 28;
+
+        if (veryClose) {
+          setFeedback("Ты очень близко 👀");
+        } else if (almost) {
+          setFeedback("Ты почти понял 👀");
+        } else if (goodAttemptBanner) {
+          setFeedback("Хорошая попытка. Давай докрутим 👇");
         }
 
-        if (
-          shouldShowVeryClose({
-            action,
-            attempts: data.attempts,
-            mode: data.mode,
-          })
-        ) {
-          setFeedback("Ты очень близко 👀");
-        } else if (
-          shouldShowAlmostUnderstood({
-            action,
-            userText: trimmed,
-            attempts: data.attempts,
-            frustration: data.frustration,
-            mode: data.mode,
-          })
-        ) {
-          setFeedback("Ты почти понял 👀");
+        if (action === "none" && trimmed) {
+          const skipShortMicro = veryClose || almost || goodAttemptBanner;
+          if (!skipShortMicro && isShortAnswer(trimmed, action)) setMicroFeedback("short");
+          else if (isStrongAnswer(trimmed, action)) setMicroFeedback("good");
         }
 
         setXpToast(true);
@@ -186,8 +210,18 @@ export default function ChatPage() {
   );
 
   const onSend = (text) => run(text, "none");
-  const onRequestHint = () => run("", "hint");
-  const onGiveUp = () => run("", "give_up");
+  const onRequestHint = () => {
+    bumpUxMetric("hintButtonClicks");
+    run("", "hint");
+  };
+  const onRequestExample = () => {
+    bumpUxMetric("exampleHintClicks");
+    run("Дай пример", "hint");
+  };
+  const onGiveUp = () => {
+    bumpUxMetric("giveUpClicks");
+    run("", "give_up");
+  };
 
   const onNewSession = () => {
     if (confirm("Начать новую сессию? Прогресс этой темы сбросится.")) {
@@ -218,6 +252,12 @@ export default function ChatPage() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[7_1_0%]">
           <ModeIndicator mode={mode} attempts={attempts} frustration={frustration} />
+          <AssistPanel
+            level={frustrationLevel}
+            loading={loading}
+            onExampleHint={onRequestExample}
+            onExplain={onGiveUp}
+          />
           <ChatWindow
             messages={messages}
             loading={loading}
@@ -225,6 +265,7 @@ export default function ChatPage() {
             microFeedback={microFeedback}
             simplerBanner={simplerBanner}
             idleHint={idleHint}
+            assistLevel={frustrationLevel}
             onIdleHintDismiss={() => {
               setIdleHint(false);
               bumpActivity();
@@ -235,7 +276,9 @@ export default function ChatPage() {
             loading={loading}
             canSend={canSend}
             onRequestHint={onRequestHint}
+            onRequestExample={onRequestExample}
             onGiveUp={onGiveUp}
+            onQuickDontKnow={() => bumpUxMetric("dontKnowQuick")}
             onUserActivity={bumpActivity}
           />
         </div>

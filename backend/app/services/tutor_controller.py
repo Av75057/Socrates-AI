@@ -23,6 +23,16 @@ _TOPIC_PATTERNS = [
 
 _FRUSTRATION_MARKERS = ("не знаю", "хз", "без понятия")
 
+# Не считать «застреванием» явные запросы помощи (иначе «Дай пример» крутит счётчик).
+_HELP_REQUEST_MARKERS = (
+    "дай пример",
+    "дай подсказку",
+    "подсказку",
+    "запрошена подсказка",
+    "сдаюсь",
+    "объясни",
+)
+
 
 def _maybe_set_topic(state: TutorState, user_text: str) -> None:
     t = user_text.strip()
@@ -38,13 +48,23 @@ class TutorController:
         self._router = router or ModelRouter()
 
     def update_state(self, state: TutorState, user_input: str) -> TutorState:
+        raw = (user_input or "").strip()
+        low = raw.lower()
+        prev_attempts = state.attempts
         state.attempts += 1
 
-        low = user_input.lower()
-        if any(x in low for x in _FRUSTRATION_MARKERS):
+        marker = any(x in low for x in _FRUSTRATION_MARKERS)
+        very_short = 0 < len(raw) < 5
+
+        if marker or very_short:
             state.frustration += 1
 
-        if len(user_input) > 200:
+        # «Застрял» после пары шагов: короткие ответы без маркеров и без явной просьбы о помощи
+        help_request = any(x in low for x in _HELP_REQUEST_MARKERS)
+        if prev_attempts >= 2 and 5 <= len(raw) < 15 and not marker and not help_request:
+            state.frustration += 1
+
+        if len(raw) > 200:
             state.frustration += 1
 
         state.mode = self.decide_mode(state)

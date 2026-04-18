@@ -13,6 +13,7 @@ export default function ChatWindow({
   simplerBanner,
   idleHint,
   onIdleHintDismiss,
+  assistLevel = 0,
 }) {
   const deferred = useDeferredValue(messages);
   const visible = deferred.slice(-MAX_RENDER);
@@ -20,7 +21,7 @@ export default function ChatWindow({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading, feedback, microFeedback, simplerBanner, idleHint]);
+  }, [messages, loading, feedback, microFeedback, simplerBanner, idleHint, assistLevel]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 max-lg:pb-[calc(13.5rem+env(safe-area-inset-bottom))] lg:pb-4">

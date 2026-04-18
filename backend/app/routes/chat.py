@@ -23,6 +23,7 @@ class ChatResponse(BaseModel):
     mode: str
     attempts: int
     frustration: int
+    frustration_level: int  # 0..3 для UI (анти-фрустрация)
     topic: str
 
 
@@ -53,5 +54,6 @@ async def chat(
         mode=mode,
         attempts=state.attempts,
         frustration=state.frustration,
+        frustration_level=min(3, state.frustration),
         topic=state.topic,
     )
