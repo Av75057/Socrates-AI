@@ -19,6 +19,7 @@ import { getMemoryUserId } from "../config/memoryUser.js";
 import AssistPanel from "../components/AssistPanel.jsx";
 import UserStateBadge from "../components/UserStateBadge.jsx";
 import UserMemoryPanel from "../components/UserMemoryPanel.jsx";
+import SkillTree from "../components/SkillTree.jsx";
 import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxMetrics.js";
 
 async function postChat(sessionId, message, action) {
@@ -56,6 +57,7 @@ export default function ChatPage() {
   const frustrationLevel = useChatStore((s) => s.frustrationLevel);
   const userType = useChatStore((s) => s.userType);
   const memory = useChatStore((s) => s.memory);
+  const skillTree = useChatStore((s) => s.skillTree);
   const topic = useChatStore((s) => s.topic);
   const sessionId = useChatStore((s) => s.sessionId);
   const xp = useChatStore((s) => s.xp);
@@ -76,6 +78,7 @@ export default function ChatPage() {
   const [simplerBanner, setSimplerBanner] = useState(false);
   const [idleHint, setIdleHint] = useState(false);
   const [xpToast, setXpToast] = useState(false);
+  const [skillToast, setSkillToast] = useState(null);
 
   const lastActivityRef = useRef(Date.now());
 
@@ -133,6 +136,12 @@ export default function ChatPage() {
   useEffect(() => {
     if (userType) recordProfileTime(userType);
   }, [userType]);
+
+  useEffect(() => {
+    if (!skillToast) return undefined;
+    const t = setTimeout(() => setSkillToast(null), 5200);
+    return () => clearTimeout(t);
+  }, [skillToast]);
 
   const run = useCallback(
     async (message, action = "none") => {
@@ -200,6 +209,17 @@ export default function ChatPage() {
 
         setXpToast(true);
         setTimeout(() => setXpToast(false), 1400);
+
+        const ev = data.skill_tree?.events;
+        if (ev?.completed?.length) {
+          bumpUxMetric("skillNodeCompleted");
+          const t = ev.completed[0];
+          setSkillToast(`Ты разобрался с темой «${t.title}» 🎉 Готов перейти к следующей?`);
+        } else if (ev?.unlocked?.length) {
+          bumpUxMetric("skillNodeUnlocked");
+          const t = ev.unlocked[0];
+          setSkillToast(`Новая тема открыта: «${t.title}» 🔓`);
+        }
       } catch (e) {
         const msg =
           e instanceof TypeError
@@ -262,6 +282,13 @@ export default function ChatPage() {
   return (
     <div className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#0f172a] font-sans text-slate-100">
       <XpFloater amount={5} show={xpToast} />
+      {skillToast ? (
+        <div className="pointer-events-none fixed left-0 right-0 top-[3.25rem] z-30 flex justify-center px-3 sm:top-16">
+          <div className="max-w-lg rounded-xl border border-violet-500/40 bg-violet-950/95 px-4 py-2.5 text-center text-sm text-violet-100 shadow-lg shadow-black/30">
+            {skillToast}
+          </div>
+        </div>
+      ) : null}
       <SessionHeader topic={topic} onNewSession={onNewSession} xp={xp} streak={streak} />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
@@ -269,6 +296,9 @@ export default function ChatPage() {
           <ModeIndicator mode={mode} attempts={attempts} frustration={frustration} />
           <UserStateBadge type={userType} />
           <UserMemoryPanel memory={memory} className="mx-4 mt-0 lg:hidden" />
+          <div className="mx-4 lg:hidden">
+            <SkillTree skillTree={skillTree} />
+          </div>
           <AssistPanel
             level={frustrationLevel}
             loading={loading}
@@ -307,6 +337,7 @@ export default function ChatPage() {
           streak={streak}
           topic={topic}
           memory={memory}
+          skillTree={skillTree}
           avatarMood={avatarMood}
           whisperIndex={attempts}
           progressPulseKey={attempts}

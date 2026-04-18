@@ -20,6 +20,7 @@ const EMPTY_MEMORY = {
   mistakes: [],
   progress: {},
   user_type: "lazy",
+  skill_status: {},
 };
 
 export const useChatStore = create((set, get) => ({
@@ -31,6 +32,7 @@ export const useChatStore = create((set, get) => ({
   frustrationLevel: 0,
   userType: "lazy",
   memory: { ...EMPTY_MEMORY },
+  skillTree: null,
   topic: "",
   lastSendAt: 0,
   sessionId: getOrCreateSessionId(),
@@ -66,8 +68,16 @@ export const useChatStore = create((set, get) => ({
                 ["lazy", "anxious", "thinker"].includes(payload.memory.user_type)
                   ? payload.memory.user_type
                   : "lazy",
+              skill_status:
+                payload.memory.skill_status && typeof payload.memory.skill_status === "object"
+                  ? payload.memory.skill_status
+                  : {},
             }
           : get().memory,
+      skillTree:
+        payload.skill_tree && typeof payload.skill_tree === "object"
+          ? payload.skill_tree
+          : get().skillTree,
       topic: payload.topic || "",
     }),
 

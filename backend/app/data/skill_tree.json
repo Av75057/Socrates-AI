@@ -1,0 +1,30 @@
+{
+  "track_id": "physics",
+  "track_title": "Физика",
+  "nodes": [
+    {
+      "id": "force",
+      "title": "Сила",
+      "depends_on": [],
+      "keywords": ["сила", "силу", "ньютон", "динамик", "f = ma", "закон ньютона"]
+    },
+    {
+      "id": "acceleration",
+      "title": "Ускорение",
+      "depends_on": ["force"],
+      "keywords": ["ускорен", "кинематик", "равноускорен"]
+    },
+    {
+      "id": "energy",
+      "title": "Энергия",
+      "depends_on": ["force"],
+      "keywords": ["энерг", "работа", "мощност", "кинетич", "потенциал"]
+    },
+    {
+      "id": "momentum",
+      "title": "Импульс",
+      "depends_on": ["force", "acceleration"],
+      "keywords": ["импульс", "столкнов", "закон сохранения импульса"]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.models.state import TutorState
 from app.models.user_memory import UserMemory
+from app.services.skill_tree_manager import apply_skill_tree_updates
 
 
 def detect_mistake(user_message: str, topic: str) -> str | None:
@@ -124,5 +125,7 @@ def update_memory_after_turn(
         memory.mistakes.append({"topic": topic, "error": mistake})
     if len(memory.mistakes) > 40:
         memory.mistakes = memory.mistakes[-40:]
+
+    apply_skill_tree_updates(memory, topic, reply_mode)
 
     return memory

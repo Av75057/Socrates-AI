@@ -10,6 +10,7 @@ from app.services.cheat_detector import is_cheating
 from app.services.memory_manager import update_memory_after_turn
 from app.services.memory_store import load_memory, save_memory
 from app.services.redis_state import get_redis, load_state, save_state
+from app.services.skill_tree_manager import build_skill_tree_payload
 from app.services.tutor_controller import TutorController
 
 router = APIRouter()
@@ -31,6 +32,7 @@ class MemoryOut(BaseModel):
     mistakes: list[dict[str, Any]] = Field(default_factory=list)
     progress: dict[str, str] = Field(default_factory=dict)
     user_type: str = "lazy"
+    skill_status: dict[str, str] = Field(default_factory=dict)
 
 
 class ChatResponse(BaseModel):
@@ -42,6 +44,7 @@ class ChatResponse(BaseModel):
     user_type: str  # lazy | anxious | thinker
     topic: str
     memory: MemoryOut
+    skill_tree: dict[str, Any]
 
 
 _redis = None
@@ -71,6 +74,7 @@ async def chat(
     state = await load_state(r, body.session_id)
     mid = (body.memory_user_id or body.session_id).strip()
     memory = await load_memory(r, mid)
+    prev_skill = dict(memory.skill_status)
     controller = TutorController()
     try:
         reply, mode = await controller.handle_turn(
@@ -87,6 +91,8 @@ async def chat(
         memory = update_memory_after_turn(memory, state, _line_for_memory_update(body), mode)
         await save_memory(r, mid, memory)
 
+    skill_tree = build_skill_tree_payload(prev_skill, dict(memory.skill_status))
+
     ut = state.user_type if state.user_type in ("lazy", "anxious", "thinker") else "lazy"
     md = memory.to_dict()
     return ChatResponse(
@@ -102,5 +108,7 @@ async def chat(
             mistakes=md["mistakes"],
             progress=md["progress"],
             user_type=md["user_type"],
+            skill_status=md.get("skill_status") or {},
         ),
+        skill_tree=skill_tree,
     )
