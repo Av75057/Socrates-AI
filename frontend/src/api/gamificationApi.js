@@ -1,0 +1,54 @@
+import { apiUrl } from "../config/api.js";
+
+/**
+ * Все вызовы безопасны для чата: при ошибке сети возвращают null / пустой результат.
+ */
+
+export async function fetchGamificationProgress(sessionId) {
+  try {
+    const res = await fetch(apiUrl(`/gamification/progress/${encodeURIComponent(sessionId)}`));
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchAchievementsCatalog() {
+  try {
+    const res = await fetch(apiUrl("/gamification/achievements"));
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data?.achievements) ? data.achievements : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchDailyChallenge(sessionId) {
+  try {
+    const res = await fetch(apiUrl(`/gamification/daily-challenge/${encodeURIComponent(sessionId)}`));
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function postGamificationAction(sessionId, actionType, dialogContext = {}) {
+  try {
+    const res = await fetch(apiUrl("/gamification/action"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: sessionId,
+        action_type: actionType,
+        dialog_context: dialogContext,
+      }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}

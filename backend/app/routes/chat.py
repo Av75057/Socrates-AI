@@ -5,11 +5,11 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.config import Settings, get_settings
+from app.deps import redis_dep
 from app.services.cheat_detector import is_cheating
 from app.services.memory_manager import update_memory_after_turn
 from app.services.memory_store import load_memory, save_memory
-from app.services.redis_state import get_redis, load_state, save_state
+from app.services.redis_state import load_state, save_state
 from app.services.skill_tree_manager import build_skill_tree_payload
 from app.services.tutor_controller import TutorController
 
@@ -46,16 +46,6 @@ class ChatResponse(BaseModel):
     topic: str
     memory: MemoryOut
     skill_tree: dict[str, Any]
-
-
-_redis = None
-
-
-async def redis_dep(settings: Settings = Depends(get_settings)):
-    global _redis
-    if _redis is None:
-        _redis = await get_redis(settings.redis_url)
-    return _redis
 
 
 def _line_for_memory_update(body: ChatRequest) -> str:

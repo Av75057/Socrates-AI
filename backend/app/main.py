@@ -10,7 +10,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routes import chat
+from app.routes import chat, gamification
 
 
 @asynccontextmanager
@@ -31,6 +31,7 @@ app.add_middleware(
 )
 
 app.include_router(chat.router, tags=["chat"])
+app.include_router(gamification.router, prefix="/gamification", tags=["gamification"])
 
 
 @app.get("/health")

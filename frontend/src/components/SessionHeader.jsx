@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-export default function SessionHeader({ topic, onNewSession, xp = 0, streak = 0 }) {
+export default function SessionHeader({ topic, onNewSession, xp = 0, streak = 0, wisdomSlot = null }) {
   return (
     <header className="shrink-0 border-b border-slate-800/90 bg-[#0f172a]/95 px-3 py-2 backdrop-blur sm:px-4 sm:py-3">
       <div className="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -12,6 +12,7 @@ export default function SessionHeader({ topic, onNewSession, xp = 0, streak = 0 
             >
               ← На главную
             </Link>
+            {wisdomSlot}
             <span className="text-xs tabular-nums text-slate-500 lg:hidden">
               XP <span className="text-cyan-300">{xp}</span>
               <span className="mx-1.5 text-slate-700">·</span>

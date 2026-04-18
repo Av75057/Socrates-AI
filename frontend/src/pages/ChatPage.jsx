@@ -21,6 +21,16 @@ import UserStateBadge from "../components/UserStateBadge.jsx";
 import UserMemoryPanel from "../components/UserMemoryPanel.jsx";
 import SkillTree from "../components/SkillTree.jsx";
 import ThinkingPanel from "../components/ThinkingPanel.jsx";
+import WisdomPointsBadge from "../components/gamification/WisdomPointsBadge.jsx";
+import AchievementsModal from "../components/gamification/AchievementsModal.jsx";
+import DailyChallengeWidget from "../components/gamification/DailyChallengeWidget.jsx";
+import GamificationToastHost from "../components/gamification/GamificationToastHost.jsx";
+import {
+  fetchAchievementsCatalog,
+  fetchDailyChallenge,
+  fetchGamificationProgress,
+  postGamificationAction,
+} from "../api/gamificationApi.js";
 import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxMetrics.js";
 
 async function postChat(sessionId, message, action) {
@@ -80,8 +90,30 @@ export default function ChatPage() {
   const [idleHint, setIdleHint] = useState(false);
   const [xpToast, setXpToast] = useState(false);
   const [skillToast, setSkillToast] = useState(null);
+  const [gamProgress, setGamProgress] = useState(null);
+  const [dailyCh, setDailyCh] = useState(null);
+  const [achCatalog, setAchCatalog] = useState([]);
+  const [achOpen, setAchOpen] = useState(false);
+  const [gamToasts, setGamToasts] = useState([]);
+  const [wisdomBump, setWisdomBump] = useState(0);
+  const [gamificationLoaded, setGamificationLoaded] = useState(false);
 
   const lastActivityRef = useRef(Date.now());
+
+  const pushGamToast = useCallback((text, kind = "points") => {
+    const id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `gt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    setGamToasts((t) => [...t, { id, kind, text }]);
+    setTimeout(() => {
+      setGamToasts((t) => t.filter((x) => x.id !== id));
+    }, 5000);
+  }, []);
+
+  const dismissGamToast = useCallback((id) => {
+    setGamToasts((t) => t.filter((x) => x.id !== id));
+  }, []);
 
   const bumpActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -139,6 +171,26 @@ export default function ChatPage() {
   }, [userType]);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setGamificationLoaded(false);
+      const [p, dc, cat] = await Promise.all([
+        fetchGamificationProgress(sessionId),
+        fetchDailyChallenge(sessionId),
+        fetchAchievementsCatalog(),
+      ]);
+      if (cancelled) return;
+      if (p) setGamProgress(p);
+      setDailyCh(dc);
+      setAchCatalog(Array.isArray(cat) ? cat : []);
+      setGamificationLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  useEffect(() => {
     if (!skillToast) return undefined;
     const t = setTimeout(() => setSkillToast(null), 5200);
     return () => clearTimeout(t);
@@ -166,6 +218,7 @@ export default function ChatPage() {
       setFeedback(null);
       setMicroFeedback(null);
       setLoading(true);
+      const attemptsBefore = useChatStore.getState().attempts;
       try {
         const data = await postChat(sessionId, trimmed, action);
         addMessage("assistant", data.reply);
@@ -221,6 +274,29 @@ export default function ChatPage() {
           const t = ev.unlocked[0];
           setSkillToast(`Новая тема открыта: «${t.title}» 🔓`);
         }
+
+        const msgForGame =
+          trimmed ||
+          (action === "hint" ? "Дай подсказку" : action === "give_up" ? "Объясни нормально" : "");
+        if (msgForGame || action !== "none") {
+          const gam = await postGamificationAction(sessionId, "user_response", {
+            user_message: msgForGame,
+            action,
+            attempts_before: attemptsBefore,
+          });
+          if (gam?.progress) {
+            setGamProgress(gam.progress);
+            setWisdomBump((k) => k + 1);
+          }
+          if (gam?.toasts?.length) {
+            for (const line of gam.toasts) {
+              const kind = line.includes("Достижение") ? "achievement" : "points";
+              pushGamToast(line, kind);
+            }
+          }
+        }
+        const dc = await fetchDailyChallenge(sessionId);
+        if (dc) setDailyCh(dc);
       } catch (e) {
         const msg =
           e instanceof TypeError
@@ -241,6 +317,7 @@ export default function ChatPage() {
       sessionId,
       setFromServer,
       setLoading,
+      pushGamToast,
     ],
   );
 
@@ -266,6 +343,7 @@ export default function ChatPage() {
       setIdleHint(false);
       setXpToast(false);
       resetProfileClock();
+      void postGamificationAction(sessionId, "new_dialog", {});
       resetSession();
     }
   };
@@ -282,6 +360,13 @@ export default function ChatPage() {
 
   return (
     <div className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#0f172a] font-sans text-slate-100">
+      <GamificationToastHost items={gamToasts} onDismiss={dismissGamToast} />
+      <AchievementsModal
+        open={achOpen}
+        onClose={() => setAchOpen(false)}
+        catalog={achCatalog}
+        unlockedIds={gamProgress?.achievements}
+      />
       <XpFloater amount={5} show={xpToast} />
       {skillToast ? (
         <div className="pointer-events-none fixed left-0 right-0 top-[3.25rem] z-30 flex justify-center px-3 sm:top-16">
@@ -290,7 +375,25 @@ export default function ChatPage() {
           </div>
         </div>
       ) : null}
-      <SessionHeader topic={topic} onNewSession={onNewSession} xp={xp} streak={streak} />
+      <SessionHeader
+        topic={topic}
+        onNewSession={onNewSession}
+        xp={xp}
+        streak={streak}
+        wisdomSlot={
+          <WisdomPointsBadge
+            points={gamProgress?.wisdom_points ?? 0}
+            level={gamProgress?.level ?? 1}
+            onClick={() => setAchOpen(true)}
+            bumpSignal={wisdomBump}
+          />
+        }
+      />
+      <DailyChallengeWidget
+        text={dailyCh?.challenge_text}
+        completed={!!dailyCh?.completed}
+        loading={!gamificationLoaded}
+      />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[7_1_0%]">
