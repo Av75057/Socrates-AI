@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import AnimatedProgressBar from "../AnimatedProgressBar.jsx";
 import TutorAvatar from "../TutorAvatar.jsx";
+import UserMemoryPanel from "../UserMemoryPanel.jsx";
 import { getThinkingLevel } from "../../utils/feedbackHeuristics.js";
 
 const TIPS = [
@@ -55,6 +56,7 @@ export default function SidePanel({
   xp,
   streak,
   topic,
+  memory,
   avatarMood,
   whisperIndex,
   progressPulseKey,
@@ -64,6 +66,8 @@ export default function SidePanel({
   return (
     <aside className="hidden max-h-[100dvh] w-full flex-col gap-4 overflow-y-auto border-t border-slate-800/80 bg-[#0f172a] p-4 lg:flex lg:w-[30%] lg:min-w-[260px] lg:max-w-md lg:border-l lg:border-t-0">
       <TutorAvatar mood={avatarMood} whisperIndex={whisperIndex} />
+
+      <UserMemoryPanel memory={memory} />
 
       <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-3">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Уровень</p>

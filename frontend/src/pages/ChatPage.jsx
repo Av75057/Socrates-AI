@@ -15,15 +15,22 @@ import {
   shouldShowVeryClose,
 } from "../utils/learningHints.js";
 import { getChatUrl } from "../config/api.js";
+import { getMemoryUserId } from "../config/memoryUser.js";
 import AssistPanel from "../components/AssistPanel.jsx";
 import UserStateBadge from "../components/UserStateBadge.jsx";
+import UserMemoryPanel from "../components/UserMemoryPanel.jsx";
 import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxMetrics.js";
 
 async function postChat(sessionId, message, action) {
   const res = await fetch(getChatUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, message, action }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      message,
+      action,
+      memory_user_id: getMemoryUserId(),
+    }),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -48,6 +55,7 @@ export default function ChatPage() {
   const frustration = useChatStore((s) => s.frustration);
   const frustrationLevel = useChatStore((s) => s.frustrationLevel);
   const userType = useChatStore((s) => s.userType);
+  const memory = useChatStore((s) => s.memory);
   const topic = useChatStore((s) => s.topic);
   const sessionId = useChatStore((s) => s.sessionId);
   const xp = useChatStore((s) => s.xp);
@@ -260,6 +268,7 @@ export default function ChatPage() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[7_1_0%]">
           <ModeIndicator mode={mode} attempts={attempts} frustration={frustration} />
           <UserStateBadge type={userType} />
+          <UserMemoryPanel memory={memory} className="mx-4 mt-0 lg:hidden" />
           <AssistPanel
             level={frustrationLevel}
             loading={loading}
@@ -297,6 +306,7 @@ export default function ChatPage() {
           xp={xp}
           streak={streak}
           topic={topic}
+          memory={memory}
           avatarMood={avatarMood}
           whisperIndex={attempts}
           progressPulseKey={attempts}

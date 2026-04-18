@@ -15,6 +15,13 @@ function getOrCreateSessionId() {
 
 const XP_PER_ATTEMPT = 5;
 
+const EMPTY_MEMORY = {
+  topics: [],
+  mistakes: [],
+  progress: {},
+  user_type: "lazy",
+};
+
 export const useChatStore = create((set, get) => ({
   messages: [],
   mode: "question",
@@ -23,6 +30,7 @@ export const useChatStore = create((set, get) => ({
   frustration: 0,
   frustrationLevel: 0,
   userType: "lazy",
+  memory: { ...EMPTY_MEMORY },
   topic: "",
   lastSendAt: 0,
   sessionId: getOrCreateSessionId(),
@@ -44,6 +52,22 @@ export const useChatStore = create((set, get) => ({
         payload.user_type && ["lazy", "anxious", "thinker"].includes(payload.user_type)
           ? payload.user_type
           : "lazy",
+      memory:
+        payload.memory && typeof payload.memory === "object"
+          ? {
+              topics: Array.isArray(payload.memory.topics) ? payload.memory.topics : [],
+              mistakes: Array.isArray(payload.memory.mistakes) ? payload.memory.mistakes : [],
+              progress:
+                payload.memory.progress && typeof payload.memory.progress === "object"
+                  ? payload.memory.progress
+                  : {},
+              user_type:
+                payload.memory.user_type &&
+                ["lazy", "anxious", "thinker"].includes(payload.memory.user_type)
+                  ? payload.memory.user_type
+                  : "lazy",
+            }
+          : get().memory,
       topic: payload.topic || "",
     }),
 

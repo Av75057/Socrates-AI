@@ -8,7 +8,9 @@ import re
 from typing import Any, Literal
 
 from app.models.state import TutorState
+from app.models.user_memory import UserMemory
 from app.services.cheat_detector import CHEAT_REPLY, is_cheating
+from app.services.memory_manager import format_memory_for_prompt
 from app.services.model_router import ModelRouter
 from app.services.prompt_builder import build_prompt
 from app.services.user_profiler import detect_user_type
@@ -104,8 +106,10 @@ class TutorController:
         state: TutorState,
         user_message: str,
         action: ChatAction = "none",
+        long_term_memory: UserMemory | None = None,
     ) -> tuple[str, str]:
         text = (user_message or "").strip()
+        mem = long_term_memory or UserMemory()
 
         if text and is_cheating(text):
             state.history.append({"role": "user", "content": text})
@@ -113,26 +117,34 @@ class TutorController:
             return CHEAT_REPLY, state.mode
 
         if action == "give_up":
+            attempts_before = state.attempts
             state.mode = "explain"
             user_line = text or "(сдаюсь — нужно краткое объяснение и контрольный вопрос в конце)"
             if text:
                 state.user_type = detect_user_type(text, state.user_type)
                 _maybe_set_topic(state, text)
-            prompt = build_prompt(state.mode, state.topic, state.history, state.user_type)
+            mb = format_memory_for_prompt(mem, state, text, attempts_before == 0)
+            prompt = build_prompt(
+                state.mode, state.topic, state.history, state.user_type, memory_block=mb
+            )
             reply = await self._router.generate(prompt, user_line, state.mode)
             state.history.append({"role": "user", "content": user_line})
             state.history.append({"role": "assistant", "content": reply})
             return reply, state.mode
 
         if action == "hint":
+            attempts_before = state.attempts
             hint_line = text or "(запрошена подсказка)"
             if text:
                 _maybe_set_topic(state, text)
             state.user_type = detect_user_type(hint_line, state.user_type)
+            mb = format_memory_for_prompt(mem, state, hint_line, attempts_before == 0)
             self.update_state(state, hint_line)
             # Явный hint при кнопке (decide_mode мог оставить question при малых attempts)
             state.mode = "explain" if state.attempts >= 4 else "hint"
-            prompt = build_prompt(state.mode, state.topic, state.history, state.user_type)
+            prompt = build_prompt(
+                state.mode, state.topic, state.history, state.user_type, memory_block=mb
+            )
             reply = await self._router.generate(prompt, hint_line, state.mode)
             state.history.append({"role": "user", "content": hint_line})
             state.history.append({"role": "assistant", "content": reply})
@@ -141,10 +153,14 @@ class TutorController:
         if not text:
             return "Напиши сообщение или используй кнопки подсказки / сдаться.", state.mode
 
+        attempts_before = state.attempts
         _maybe_set_topic(state, text)
         state.user_type = detect_user_type(text, state.user_type)
+        mb = format_memory_for_prompt(mem, state, text, attempts_before == 0)
         self.update_state(state, text)
-        prompt = build_prompt(state.mode, state.topic, state.history, state.user_type)
+        prompt = build_prompt(
+            state.mode, state.topic, state.history, state.user_type, memory_block=mb
+        )
         reply = await self._router.generate(prompt, text, state.mode)
         state.history.append({"role": "user", "content": text})
         state.history.append({"role": "assistant", "content": reply})

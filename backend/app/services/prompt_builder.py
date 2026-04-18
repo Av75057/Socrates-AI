@@ -50,6 +50,7 @@ def build_prompt(
     topic: str,
     history: list[dict[str, Any]],
     user_type: str = "lazy",
+    memory_block: str = "",
 ) -> str:
     topic_line = topic.strip() if topic.strip() else "не указана — уточни у пользователя тему в одном вопросе"
 
@@ -92,7 +93,10 @@ def build_prompt(
 
     tone = adapt_tone(user_type)
 
+    mem = (memory_block or "").strip()
+    mem_part = f"\n{mem}\n" if mem else ""
+
     history_text = _history_to_text(history)
     dialog_block = f"\nДиалог:\n{history_text}" if history_text else "\nДиалог: (пока пусто)"
 
-    return base.strip() + "\n" + rules.strip() + "\n" + tone.strip() + dialog_block
+    return base.strip() + "\n" + rules.strip() + "\n" + tone.strip() + mem_part + dialog_block
