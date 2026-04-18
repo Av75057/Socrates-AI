@@ -10,6 +10,8 @@ const apiProxy = {
 };
 
 export default defineConfig({
+  /** Явно SPA: dev/preview отдают index.html на любые пути (React Router). */
+  appType: "spa",
   plugins: [react()],
   server: {
     /** Слушать все интерфейсы — LAN и проброс с роутера на этот ПК */
