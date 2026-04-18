@@ -31,6 +31,11 @@ import {
   fetchGamificationProgress,
   postGamificationAction,
 } from "../api/gamificationApi.js";
+import { fetchPedagogyState, postPedagogyHint, postPedagogyMode } from "../api/pedagogyApi.js";
+import TutorModeSelector from "../components/pedagogy/TutorModeSelector.jsx";
+import DifficultyIndicator from "../components/pedagogy/DifficultyIndicator.jsx";
+import FallacyNotification from "../components/pedagogy/FallacyNotification.jsx";
+import HintButton from "../components/pedagogy/HintButton.jsx";
 import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxMetrics.js";
 
 async function postChat(sessionId, message, action) {
@@ -97,6 +102,9 @@ export default function ChatPage() {
   const [gamToasts, setGamToasts] = useState([]);
   const [wisdomBump, setWisdomBump] = useState(0);
   const [gamificationLoaded, setGamificationLoaded] = useState(false);
+  const [tutorMode, setTutorMode] = useState("friendly");
+  const [pedDifficulty, setPedDifficulty] = useState(1);
+  const [fallacyNotice, setFallacyNotice] = useState(null);
 
   const lastActivityRef = useRef(Date.now());
 
@@ -114,6 +122,27 @@ export default function ChatPage() {
   const dismissGamToast = useCallback((id) => {
     setGamToasts((t) => t.filter((x) => x.id !== id));
   }, []);
+
+  const handleTutorModeChange = useCallback(
+    async (m) => {
+      setTutorMode(m);
+      const res = await postPedagogyMode(sessionId, m);
+      if (res && typeof res.difficulty_level === "number") setPedDifficulty(res.difficulty_level);
+    },
+    [sessionId],
+  );
+
+  const handlePedagogyHint = useCallback(async () => {
+    if (loading || !canSend()) return;
+    bumpActivity();
+    const msgs = useChatStore.getState().messages;
+    const lastUser = [...msgs].reverse().find((m) => m.role === "user")?.text ?? "";
+    const res = await postPedagogyHint(sessionId, topic, lastUser);
+    if (res?.hint) {
+      addMessage("assistant", res.hint);
+      if (typeof res.difficulty_level === "number") setPedDifficulty(res.difficulty_level);
+    }
+  }, [sessionId, topic, loading, canSend, bumpActivity, addMessage]);
 
   const bumpActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -191,6 +220,19 @@ export default function ChatPage() {
   }, [sessionId]);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const s = await fetchPedagogyState(sessionId);
+      if (cancelled || !s) return;
+      if (s.mode) setTutorMode(s.mode);
+      if (typeof s.difficulty_level === "number") setPedDifficulty(s.difficulty_level);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  useEffect(() => {
     if (!skillToast) return undefined;
     const t = setTimeout(() => setSkillToast(null), 5200);
     return () => clearTimeout(t);
@@ -223,6 +265,16 @@ export default function ChatPage() {
         const data = await postChat(sessionId, trimmed, action);
         addMessage("assistant", data.reply);
         setFromServer(data);
+
+        if (data.pedagogy) {
+          setTutorMode(data.pedagogy.mode || "friendly");
+          setPedDifficulty(data.pedagogy.difficulty_level ?? 1);
+          if (data.pedagogy.fallacy?.has_fallacy) {
+            setFallacyNotice(data.pedagogy.fallacy);
+          } else {
+            setFallacyNotice(null);
+          }
+        }
 
         recordTurnOutcome({ userText: trimmed, action });
 
@@ -342,6 +394,7 @@ export default function ChatPage() {
       setSimplerBanner(false);
       setIdleHint(false);
       setXpToast(false);
+      setFallacyNotice(null);
       resetProfileClock();
       void postGamificationAction(sessionId, "new_dialog", {});
       resetSession();
@@ -394,6 +447,7 @@ export default function ChatPage() {
         completed={!!dailyCh?.completed}
         loading={!gamificationLoaded}
       />
+      <FallacyNotification fallacy={fallacyNotice} onDismiss={() => setFallacyNotice(null)} />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[7_1_0%]">
@@ -433,6 +487,21 @@ export default function ChatPage() {
             onGiveUp={onGiveUp}
             onQuickDontKnow={() => bumpUxMetric("dontKnowQuick")}
             onUserActivity={bumpActivity}
+            topBar={
+              <>
+                <TutorModeSelector
+                  value={tutorMode}
+                  onChange={handleTutorModeChange}
+                  disabled={loading}
+                />
+                <DifficultyIndicator level={pedDifficulty} />
+                <HintButton
+                  visible={tutorMode === "friendly" || pedDifficulty > 2}
+                  disabled={loading || !canSend()}
+                  onClick={handlePedagogyHint}
+                />
+              </>
+            }
           />
         </div>
 

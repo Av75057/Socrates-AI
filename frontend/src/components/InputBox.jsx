@@ -13,6 +13,7 @@ export default function InputBox({
   onGiveUp,
   onQuickDontKnow,
   onUserActivity,
+  topBar = null,
 }) {
   const [value, setValue] = useState("");
   const ut = ["lazy", "anxious", "thinker"].includes(userType) ? userType : "lazy";
@@ -52,6 +53,9 @@ export default function InputBox({
   return (
     <div className="input-dock z-20 shrink-0 border-t border-slate-800 bg-[#020617]/98 px-3 pt-3 backdrop-blur max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:right-0 lg:relative lg:px-4">
       <div className="mx-auto flex max-w-3xl flex-col gap-3">
+        {topBar ? (
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/70 pb-2">{topBar}</div>
+        ) : null}
         <div className="grid grid-cols-2 gap-2">
           {ut === "lazy" ? (
             <>

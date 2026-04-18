@@ -124,3 +124,37 @@ class ModelRouter:
             pass
 
         return "Попробуй объяснить это своими словами 🙂"
+
+    async def call_pedagogy_llm(self, system_prompt: str, user_prompt: str) -> str:
+        """Лёгкая модель для анализа ошибок и глубины (JSON в ответе)."""
+        if not self._api_key:
+            return "{}"
+        model = os.getenv("OPENROUTER_MODEL_PEDAGOGY", "google/gemini-2.0-flash-001")
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.15,
+            "max_tokens": 450,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": self._http_referer,
+            "X-Title": self._x_title,
+        }
+        async with httpx.AsyncClient(timeout=min(self._timeout_s, 45.0)) as client:
+            r = await client.post(self._api_url, json=payload, headers=headers)
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError:
+                return "{}"
+            data = r.json()
+        choices = data.get("choices") or []
+        if not choices:
+            return "{}"
+        msg = choices[0].get("message") or {}
+        content = msg.get("content")
+        return (content or "").strip() or "{}"

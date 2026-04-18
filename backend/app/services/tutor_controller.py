@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
+from app.models.pedagogy import PedagogyTurnContext
 from app.models.state import TutorState
 from app.models.user_memory import UserMemory
 from app.services.cheat_detector import CHEAT_REPLY, is_cheating
@@ -107,9 +108,11 @@ class TutorController:
         user_message: str,
         action: ChatAction = "none",
         long_term_memory: UserMemory | None = None,
+        pedagogy: PedagogyTurnContext | None = None,
     ) -> tuple[str, str]:
         text = (user_message or "").strip()
         mem = long_term_memory or UserMemory()
+        ped = pedagogy or PedagogyTurnContext()
 
         if text and is_cheating(text):
             state.history.append({"role": "user", "content": text})
@@ -125,7 +128,14 @@ class TutorController:
                 _maybe_set_topic(state, text)
             mb = format_memory_for_prompt(mem, state, text, attempts_before == 0)
             prompt = build_prompt(
-                state.mode, state.topic, state.history, state.user_type, memory_block=mb
+                state.mode,
+                state.topic,
+                state.history,
+                state.user_type,
+                memory_block=mb,
+                tutor_mode=ped.tutor_mode,
+                difficulty_level=ped.difficulty_level,
+                fallacy_instruction=ped.fallacy_instruction,
             )
             reply = await self._router.generate(prompt, user_line, state.mode)
             state.history.append({"role": "user", "content": user_line})
@@ -143,7 +153,14 @@ class TutorController:
             # Явный hint при кнопке (decide_mode мог оставить question при малых attempts)
             state.mode = "explain" if state.attempts >= 4 else "hint"
             prompt = build_prompt(
-                state.mode, state.topic, state.history, state.user_type, memory_block=mb
+                state.mode,
+                state.topic,
+                state.history,
+                state.user_type,
+                memory_block=mb,
+                tutor_mode=ped.tutor_mode,
+                difficulty_level=ped.difficulty_level,
+                fallacy_instruction=ped.fallacy_instruction,
             )
             reply = await self._router.generate(prompt, hint_line, state.mode)
             state.history.append({"role": "user", "content": hint_line})
@@ -159,7 +176,14 @@ class TutorController:
         mb = format_memory_for_prompt(mem, state, text, attempts_before == 0)
         self.update_state(state, text)
         prompt = build_prompt(
-            state.mode, state.topic, state.history, state.user_type, memory_block=mb
+            state.mode,
+            state.topic,
+            state.history,
+            state.user_type,
+            memory_block=mb,
+            tutor_mode=ped.tutor_mode,
+            difficulty_level=ped.difficulty_level,
+            fallacy_instruction=ped.fallacy_instruction,
         )
         reply = await self._router.generate(prompt, text, state.mode)
         state.history.append({"role": "user", "content": text})

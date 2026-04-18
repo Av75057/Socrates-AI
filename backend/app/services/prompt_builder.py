@@ -31,6 +31,56 @@ def adapt_tone(user_type: str) -> str:
 """
 
 
+def tutor_mode_instruction(mode: str) -> str:
+    m = (mode or "friendly").strip().lower()
+    if m == "strict":
+        return """
+Режим тьютора — СТРОГИЙ:
+Ты строгий экзаменатор. Никаких готовых ответов и длинных подсказок.
+Если ответ неверен или поверхностен — задай уточняющий вопрос или короткий контрпример-вопрос.
+Будь лаконичен.
+""".strip()
+    if m == "provocateur":
+        return """
+Режим тьютора — ПРОВОКАТОР:
+Ты остроумно атакуешь слабые места аргументации. Задавай каверзные «что если», заставляй пересмотреть позицию.
+Не оскорбляй личность; провокация только по сути аргумента.
+""".strip()
+    return """
+Режим тьютора — ДРУЖЕЛЮБНЫЙ:
+Ты тёплый наставник. Хвали за попытки. Если ученик застрял — можно дать маленький намёк.
+Иногда уместен один нейтральный эмодзи (например 🙂).
+""".strip()
+
+
+def difficulty_instruction(level: int) -> str:
+    lv = max(1, min(5, int(level)))
+    if lv <= 1:
+        return """
+Уровень сложности — базовый (1/5):
+Очень простые, конкретные вопросы. Можно чуть направлять формулировкой.
+""".strip()
+    if lv == 2:
+        return """
+Уровень сложности — 2/5:
+Вопросы чуть шире; проси один простой пример или уточнение.
+""".strip()
+    if lv == 3:
+        return """
+Уровень сложности — средний (3/5):
+Проси сравнить варианты, найти исключение или проверить крайний случай.
+""".strip()
+    if lv == 4:
+        return """
+Уровень сложности — высокий (4/5):
+Больше абстракции, связь с другими идеями, «что ломается, если…».
+""".strip()
+    return """
+Уровень сложности — эксперт (5/5):
+Сильные контрпримеры, мета-вопросы вроде «что если перевернуть твой аргумент?», проверка скрытых предпосылок.
+""".strip()
+
+
 def _history_to_text(history: list[dict[str, Any]], max_messages: int = 6) -> str:
     lines: list[str] = []
     for h in history[-max_messages:]:
@@ -51,6 +101,10 @@ def build_prompt(
     history: list[dict[str, Any]],
     user_type: str = "lazy",
     memory_block: str = "",
+    *,
+    tutor_mode: str = "friendly",
+    difficulty_level: int = 1,
+    fallacy_instruction: str = "",
 ) -> str:
     topic_line = topic.strip() if topic.strip() else "не указана — уточни у пользователя тему в одном вопросе"
 
@@ -93,10 +147,26 @@ def build_prompt(
 
     tone = adapt_tone(user_type)
 
+    ped_parts = [tutor_mode_instruction(tutor_mode), difficulty_instruction(difficulty_level)]
+    fi = (fallacy_instruction or "").strip()
+    if fi:
+        ped_parts.append("Особая задача этого ответа:\n" + fi)
+    ped_block = "\n\n".join(ped_parts)
+
     mem = (memory_block or "").strip()
     mem_part = f"\n{mem}\n" if mem else ""
 
     history_text = _history_to_text(history)
     dialog_block = f"\nДиалог:\n{history_text}" if history_text else "\nДиалог: (пока пусто)"
 
-    return base.strip() + "\n" + rules.strip() + "\n" + tone.strip() + mem_part + dialog_block
+    return (
+        base.strip()
+        + "\n"
+        + rules.strip()
+        + "\n"
+        + tone.strip()
+        + "\n"
+        + ped_block
+        + mem_part
+        + dialog_block
+    )
