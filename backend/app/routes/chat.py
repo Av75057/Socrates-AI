@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.api.deps_auth import get_current_user_optional
 from app.db.models import User
+from app.config import get_settings
 from app.db.session import SessionLocal
 from app.deps import redis_dep
 from app.models.pedagogy import PedagogyTurnContext, TutorMode
@@ -28,14 +31,36 @@ from app.services.skill_tree_manager import (
     resolve_track_hint,
 )
 from app.services.tutor_controller import TutorController
-from app.services.conversation_db import append_messages, get_owned_conversation
+from app.services.conversation_db import (
+    append_messages,
+    get_owned_conversation,
+    hydrate_state_history_from_conversation_if_empty,
+)
+from app.services.learning_service import (
+    build_persistent_profile_for_prompt,
+    hydrate_session_pedagogy_from_db,
+    update_user_learning_progress_sync,
+)
 from app.services.user_settings_db import get_tutor_mode
 
 router = APIRouter()
+log = logging.getLogger(__name__)
+
+
+def _pedagogy_mode_str(mode: Any) -> str:
+    """UserPedagogyState.mode — обычно TutorMode; из Redis теоретически может быть str."""
+    if mode is None:
+        return "friendly"
+    if hasattr(mode, "value"):
+        return str(mode.value)
+    s = str(mode).strip().lower()
+    return s if s in ("strict", "friendly", "provocateur") else "friendly"
 
 
 def _last_assistant_question(history: list[dict[str, Any]]) -> str:
     for h in reversed(history):
+        if not isinstance(h, dict):
+            continue
         if h.get("role") == "assistant":
             return str(h.get("content") or "").strip()
     return ""
@@ -90,6 +115,8 @@ class ChatResponse(BaseModel):
     memory: MemoryOut
     skill_tree: dict[str, Any]
     pedagogy: PedagogyOut
+    persisted_user_message_id: int | None = None
+    persisted_assistant_message_id: int | None = None
 
 
 def _line_for_memory_update(body: ChatRequest) -> str:
@@ -126,21 +153,37 @@ async def chat(
             )
 
     state = await load_state(r, body.session_id)
+    if db_user and body.conversation_id is not None:
+
+        def _hydr_history() -> None:
+            with SessionLocal() as db:
+                hydrate_state_history_from_conversation_if_empty(
+                    db, db_user.id, body.conversation_id, state
+                )
+
+        await run_in_threadpool(_hydr_history)
     if db_user:
         mid = str(db_user.id)
     else:
         mid = (body.memory_user_id or body.session_id).strip()
     memory = await load_memory(r, mid)
+    # Тип ученика хранится в долговременной памяти; новый session_id в Redis иначе даёт lazy («новичок»).
+    if memory.user_type in ("lazy", "anxious", "thinker"):
+        state.user_type = memory.user_type
     prev_skill = dict(memory.skill_status)
     pedagogy_state = await load_pedagogy(r, body.session_id)
 
+    persistent_profile = ""
     if db_user:
 
-        def _load_tm() -> str:
+        def _hydrate_and_profile() -> tuple[str, str]:
             with SessionLocal() as db:
-                return get_tutor_mode(db, db_user.id)
+                hydrate_session_pedagogy_from_db(db, db_user.id, pedagogy_state)
+                tm = get_tutor_mode(db, db_user.id)
+                prof = build_persistent_profile_for_prompt(db, db_user.id)
+                return tm, prof
 
-        tm = await run_in_threadpool(_load_tm)
+        tm, persistent_profile = await run_in_threadpool(_hydrate_and_profile)
         try:
             pedagogy_state.mode = TutorMode(tm)
         except ValueError:
@@ -160,7 +203,7 @@ async def chat(
             _last_assistant_question(state.history),
             _history_to_text(state.history, max_messages=10),
         )
-        fallacy_instr = build_fallacy_instruction(pedagogy_state.mode.value, analysis)
+        fallacy_instr = build_fallacy_instruction(_pedagogy_mode_str(pedagogy_state.mode), analysis)
         if analysis.get("has_fallacy"):
             ft = str(analysis.get("fallacy_type") or "")
             if ft and ft != "none" and ft not in pedagogy_state.common_fallacies:
@@ -168,9 +211,10 @@ async def chat(
                 pedagogy_state.common_fallacies = pedagogy_state.common_fallacies[-15:]
 
     pctx = PedagogyTurnContext(
-        tutor_mode=pedagogy_state.mode.value,
+        tutor_mode=_pedagogy_mode_str(pedagogy_state.mode),
         difficulty_level=pedagogy_state.difficulty_level,
         fallacy_instruction=fallacy_instr,
+        persistent_profile=persistent_profile,
     )
 
     router = ModelRouter()
@@ -193,6 +237,29 @@ async def chat(
         apply_after_user_turn(pedagogy_state, float(analysis.get("depth_combined") or 0.0))
 
     await save_pedagogy(r, body.session_id, pedagogy_state)
+
+    if db_user and get_settings().skill_update_enabled:
+        if (
+            not cheat
+            and not idle_turn
+            and body.action == "none"
+            and msg_stripped
+            and analysis is not None
+        ):
+            uid = db_user.id
+            ut = msg_stripped
+            an = dict(analysis)
+            dl = int(pedagogy_state.difficulty_level)
+
+            async def _learning_bg() -> None:
+                try:
+                    await run_in_threadpool(
+                        update_user_learning_progress_sync, uid, ut, an, dl
+                    )
+                except Exception:
+                    log.exception("learning progress background task failed")
+
+            asyncio.create_task(_learning_bg())
 
     tree_hint = resolve_track_hint(state.topic, memory, body.message)
     subj = canonical_subject_topic(msg_stripped)
@@ -218,12 +285,13 @@ async def chat(
         )
 
     ped_out = PedagogyOut(
-        mode=pedagogy_state.mode.value,
+        mode=_pedagogy_mode_str(pedagogy_state.mode),
         difficulty_level=pedagogy_state.difficulty_level,
         last_response_depth=round(pedagogy_state.last_response_depth, 3),
         fallacy=fal,
     )
 
+    persisted_pair: tuple[int, int] | None = None
     if db_user and body.conversation_id and not cheat and not idle_turn:
         user_line = (
             msg_stripped
@@ -243,11 +311,11 @@ async def chat(
         uid = db_user.id
         rep = reply
 
-        def _persist_turn() -> None:
+        def _persist_turn() -> tuple[int, int] | None:
             with SessionLocal() as db:
-                append_messages(db, cid, uid, user_line, rep, fallacy_payload)
+                return append_messages(db, cid, uid, user_line, rep, fallacy_payload)
 
-        await run_in_threadpool(_persist_turn)
+        persisted_pair = await run_in_threadpool(_persist_turn)
 
     return ChatResponse(
         reply=reply,
@@ -267,4 +335,6 @@ async def chat(
         ),
         skill_tree=skill_tree,
         pedagogy=ped_out,
+        persisted_user_message_id=persisted_pair[0] if persisted_pair else None,
+        persisted_assistant_message_id=persisted_pair[1] if persisted_pair else None,
     )

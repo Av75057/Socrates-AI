@@ -14,6 +14,7 @@ import {
 } from "../api/authApi.js";
 import { getToken } from "../api/client.js";
 import { fetchMe } from "../api/userApi.js";
+import { useChatStore } from "../store/useChatStore.js";
 
 const AuthContext = createContext(null);
 
@@ -25,6 +26,8 @@ export function AuthProvider({ children }) {
     const t = getToken();
     if (!t) {
       setUser(null);
+      useChatStore.getState().clearResume();
+      useChatStore.getState().clearGamification();
       return;
     }
     const me = await fetchMe();
@@ -32,6 +35,7 @@ export function AuthProvider({ children }) {
     else {
       clearToken();
       setUser(null);
+      useChatStore.getState().clearGamification();
     }
   }, []);
 
@@ -40,12 +44,18 @@ export function AuthProvider({ children }) {
     (async () => {
       try {
         const t = getToken();
-        if (!t) return;
+        if (!t) {
+          useChatStore.getState().clearResume();
+          useChatStore.getState().clearGamification();
+          return;
+        }
         const me = await fetchMe();
         if (!cancelled && me) setUser(me);
         else if (!cancelled) {
           clearToken();
           setUser(null);
+          useChatStore.getState().clearResume();
+          useChatStore.getState().clearGamification();
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -58,6 +68,7 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const data = await loginRequest(email, password);
+    useChatStore.getState().clearGamification();
     persistToken(data.access_token);
     setUser(data.user);
     return data;
@@ -65,6 +76,7 @@ export function AuthProvider({ children }) {
 
   const register = useCallback(async (email, password, full_name) => {
     const data = await registerRequest(email, password, full_name);
+    useChatStore.getState().clearGamification();
     persistToken(data.access_token);
     setUser(data.user);
     return data;
@@ -73,6 +85,8 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     clearToken();
     setUser(null);
+    useChatStore.getState().clearResume();
+    useChatStore.getState().clearGamification();
   }, []);
 
   const value = useMemo(

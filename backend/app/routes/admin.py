@@ -11,6 +11,7 @@ from app.api.deps_auth import get_current_admin
 from app.db.models import Conversation, GamificationProgress, Message, User, UserSettings
 from app.db.session import get_db
 from app.services.conversation_db import conversation_message_count
+from app.services.learning_service import get_user_pedagogy_public, get_user_skills_summary
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -32,6 +33,7 @@ class AdminUserDetail(BaseModel):
     is_active: bool
     settings: dict[str, Any]
     gamification: dict[str, Any]
+    learning: dict[str, Any]
 
 
 class AdminUserUpdate(BaseModel):
@@ -99,6 +101,10 @@ def _admin_user_detail(db: Session, user_id: int) -> AdminUserDetail:
             "level": g.level if g else 1,
             "achievements": list(g.achievements) if g and g.achievements else [],
             "streak_days": g.streak_days if g else 0,
+        },
+        learning={
+            "pedagogy": get_user_pedagogy_public(db, u.id),
+            "skills": get_user_skills_summary(db, u.id),
         },
     )
 

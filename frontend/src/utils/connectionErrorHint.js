@@ -8,10 +8,9 @@ export function buildConnectionErrorHint() {
   const fromLan = host !== "" && host !== "localhost" && host !== "127.0.0.1";
 
   const parts = [
-    "Запусти бэкенд (в каталоге backend):",
-    "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt",
-    ".venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000",
-    "Проверка: curl -s http://127.0.0.1:8000/health",
+    "Запусти бэкенд (в каталоге backend), одной строкой:",
+    "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
+    "Проверка на этой машине: curl -s http://127.0.0.1:8000/health",
   ];
 
   if (base && fromLan && /127\.0\.0\.1|localhost/.test(base)) {

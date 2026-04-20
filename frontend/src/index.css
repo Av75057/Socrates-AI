@@ -11,7 +11,11 @@ html {
 body {
   margin: 0;
   min-height: 100%;
-  background-color: #0f172a;
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+html.dark body {
+  @apply bg-[#0f172a] text-slate-100;
 }
 
 /* Только экран чата: блокируем скролл документа (клавиатура / 100dvh). Лендинг на `/` не трогаем. */

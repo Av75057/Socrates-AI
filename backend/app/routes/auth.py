@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.models import GamificationProgress, User, UserSettings
+from app.services.learning_service import ensure_learning_rows
 from app.db.session import get_db
 from app.limiter_instance import limiter
 
@@ -60,6 +61,8 @@ def register(body: RegisterBody, db: Session = Depends(get_db)):
             tutor_mode="friendly",
             theme="dark",
             notifications_enabled=True,
+            has_seen_onboarding=False,
+            show_typing_indicator=True,
         )
     )
     db.add(
@@ -73,6 +76,7 @@ def register(body: RegisterBody, db: Session = Depends(get_db)):
             extra_state=None,
         )
     )
+    ensure_learning_rows(db, u.id)
     db.commit()
     db.refresh(u)
     token = create_access_token(str(u.id))

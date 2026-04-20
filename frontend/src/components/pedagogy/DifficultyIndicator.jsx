@@ -14,11 +14,11 @@ export default function DifficultyIndicator({ level = 1 }) {
         {[1, 2, 3, 4, 5].map((i) => (
           <span
             key={i}
-            className={`h-2 w-5 rounded-full sm:h-2.5 sm:w-6 ${i <= lv ? colors[lv - 1] : "bg-slate-700"}`}
+            className={`h-2 w-5 rounded-full sm:h-2.5 sm:w-6 ${i <= lv ? colors[lv - 1] : "bg-slate-300 dark:bg-slate-700"}`}
           />
         ))}
       </div>
-      <span className="tabular-nums text-[11px] font-bold text-slate-400">{lv}/5</span>
+      <span className="tabular-nums text-[11px] font-bold text-slate-600 dark:text-slate-400">{lv}/5</span>
     </div>
   );
 }

@@ -18,11 +18,11 @@ export default function MessageBubble({ role, text }) {
         className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-xl sm:max-w-[min(80%,42rem)] sm:text-base ${
           isUser
             ? "rounded-br-md bg-[#2563eb] text-white"
-            : "rounded-bl-md border border-slate-600/50 bg-[#1e293b] text-slate-100"
+            : "rounded-bl-md border border-slate-200 bg-slate-100 text-slate-900 dark:border-slate-600/50 dark:bg-[#1e293b] dark:text-slate-100"
         }`}
       >
         {!isUser ? (
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-400/90">
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400/90">
             Socrates
           </div>
         ) : null}

@@ -26,19 +26,19 @@ export default function ModeIndicator({ mode, attempts, frustration }) {
   const m = MODES[mode] || MODES.question;
   return (
     <>
-      <div className="border-b border-slate-800/80 bg-[#0f172a]/80 px-4 py-1.5 text-center text-xs text-slate-400 lg:hidden">
+      <div className="border-b border-slate-200 bg-slate-100/90 px-4 py-1.5 text-center text-xs text-slate-600 lg:hidden dark:border-slate-800/80 dark:bg-[#0f172a]/80 dark:text-slate-400">
         <span aria-hidden>{m.emoji}</span> {m.label}
       </div>
-      <div className="hidden flex-wrap items-center gap-3 border-b border-slate-800/80 bg-[#0f172a]/80 px-4 py-2.5 lg:flex">
+      <div className="hidden flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-100/90 px-4 py-2.5 lg:flex dark:border-slate-800/80 dark:bg-[#0f172a]/80">
         <div
           className={`inline-flex min-h-[44px] items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-white ${m.color} ring-2 ${m.ring}`}
         >
           <span aria-hidden>{m.emoji}</span>
           <span>{m.label}</span>
         </div>
-        <div className="text-xs text-slate-500">
-          Вовлечённость: <span className="text-slate-300">{attempts}</span> шагов · напряжение:{" "}
-          <span className="text-slate-300">{frustration}</span>
+        <div className="text-xs text-slate-600 dark:text-slate-500">
+          Вовлечённость: <span className="text-slate-800 dark:text-slate-300">{attempts}</span> шагов · напряжение:{" "}
+          <span className="text-slate-800 dark:text-slate-300">{frustration}</span>
         </div>
       </div>
     </>

@@ -4,6 +4,8 @@ import TutorAvatar from "../TutorAvatar.jsx";
 import UserMemoryPanel from "../UserMemoryPanel.jsx";
 import SkillTree from "../SkillTree.jsx";
 import ThinkingPanel from "../ThinkingPanel.jsx";
+import { MAX_STEPS, wisdomPointsToProgressSteps } from "../../constants/progress.js";
+import { XP_PER_ATTEMPT } from "../../store/useChatStore.js";
 import { getThinkingLevel } from "../../utils/feedbackHeuristics.js";
 import { skillTreeTopicMismatch } from "../../utils/subjectTrack.js";
 
@@ -14,10 +16,12 @@ const TIPS = [
 ];
 
 const LEAF_BY_STATUS = {
-  completed: "border-emerald-500/50 text-emerald-100",
-  in_progress: "border-amber-500/50 text-amber-100",
-  available: "border-blue-500/50 text-blue-100",
-  locked: "border-slate-700 text-slate-600",
+  completed:
+    "border-emerald-600/50 text-emerald-800 dark:border-emerald-500/50 dark:text-emerald-100",
+  in_progress:
+    "border-amber-600/50 text-amber-900 dark:border-amber-500/50 dark:text-amber-100",
+  available: "border-blue-600/50 text-blue-800 dark:border-blue-500/50 dark:text-blue-100",
+  locked: "border-slate-300 text-slate-500 dark:border-slate-700 dark:text-slate-600",
 };
 
 function MindMapVisual({ topic, skillTree }) {
@@ -36,26 +40,26 @@ function MindMapVisual({ topic, skillTree }) {
   }));
 
   return (
-    <div className="rounded-xl border border-slate-700/60 bg-slate-900/40 p-3">
+    <div className="rounded-xl border border-slate-200 bg-white/70 p-3 dark:border-slate-700/60 dark:bg-slate-900/40">
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Mind-map</p>
       {trackMismatch ? (
-        <div className="text-center text-[11px] leading-snug text-slate-500">
-          <p className="mb-1.5 font-medium text-slate-400">{center}</p>
+        <div className="text-center text-[11px] leading-snug text-slate-600 dark:text-slate-500">
+          <p className="mb-1.5 font-medium text-slate-700 dark:text-slate-400">{center}</p>
           <p>Карта ещё от старого трека. Отправьте любое сообщение — подтянется нужный предмет.</p>
         </div>
       ) : nodes.length === 0 ? (
-        <p className="text-center text-[11px] leading-snug text-slate-500">
+        <p className="text-center text-[11px] leading-snug text-slate-600 dark:text-slate-500">
           Здесь появится карта темы после ответа сервера. Например, напишите «математика» или «физика».
         </p>
       ) : (
         <div className="flex flex-col items-center gap-1 text-xs">
           <motion.div
             layout
-            className="rounded-lg border border-cyan-500/40 bg-[#1e293b] px-3 py-1.5 font-medium text-cyan-100"
+            className="rounded-lg border border-cyan-500/50 bg-cyan-50 px-3 py-1.5 font-medium text-cyan-900 dark:border-cyan-500/40 dark:bg-[#1e293b] dark:text-cyan-100"
           >
             {center}
           </motion.div>
-          <div className="text-slate-600">↓</div>
+          <div className="text-slate-400 dark:text-slate-600">↓</div>
           <div className="flex flex-wrap justify-center gap-2">
             {nodes.map((n) => {
               const active = n.status !== "locked";
@@ -91,58 +95,82 @@ export default function SidePanel({
   avatarMood,
   whisperIndex,
   progressPulseKey,
+  /** В аккаунте уровень/прогресс бара — от мудрости, а не от attempts сессии (не сбрасываются при смене диалога). */
+  accountGamification = false,
+  gamificationPublic = null,
 }) {
-  const level = getThinkingLevel(attempts);
+  const wisdomLevel = Math.max(1, Number(gamificationPublic?.level) || 1);
+  const wisdomPoints = Math.max(0, Number(gamificationPublic?.wisdom_points) || 0);
+  const barSteps = accountGamification ? wisdomPointsToProgressSteps(wisdomPoints) : attempts;
+  const level = accountGamification
+    ? { key: `wisdom-${wisdomLevel}`, label: `Уровень мудрости ${wisdomLevel}` }
+    : getThinkingLevel(attempts);
+  const pulseKey = accountGamification ? `${wisdomPoints}-${wisdomLevel}` : progressPulseKey;
+  const avatarWhisperIdx = accountGamification ? Math.min(MAX_STEPS, barSteps) : whisperIndex;
+  const displayXp =
+    accountGamification && gamificationPublic != null
+      ? (Number(gamificationPublic.total_user_turns) || 0) * XP_PER_ATTEMPT
+      : xp;
+  const displayStreak =
+    accountGamification && gamificationPublic != null
+      ? Number(gamificationPublic.logic_good_streak) || 0
+      : streak;
 
   return (
-    <aside className="hidden max-h-[100dvh] w-full flex-col gap-4 overflow-y-auto border-t border-slate-800/80 bg-[#0f172a] p-4 lg:flex lg:w-[30%] lg:min-w-[260px] lg:max-w-md lg:border-l lg:border-t-0">
-      <TutorAvatar mood={avatarMood} whisperIndex={whisperIndex} />
+    <aside className="hidden max-h-[100dvh] w-full flex-col gap-4 overflow-y-auto border-t border-slate-200 bg-slate-50 p-4 lg:flex lg:w-[30%] lg:min-w-[260px] lg:max-w-md lg:border-l lg:border-t-0 dark:border-slate-800/80 dark:bg-[#0f172a]">
+      <TutorAvatar mood={avatarMood} whisperIndex={avatarWhisperIdx} />
 
       <UserMemoryPanel memory={memory} />
 
-      <SkillTree skillTree={skillTree} topic={topic} />
+      <div data-tour="skills-desktop">
+        <SkillTree skillTree={skillTree} topic={topic} />
+      </div>
 
       <ThinkingPanel profile={memory.thinking_profile} />
 
-      <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-3">
+      <div className="rounded-xl border border-slate-200 bg-white/80 p-3 dark:border-slate-700/50 dark:bg-slate-900/30">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Уровень</p>
-        <p className="mt-1 text-sm font-semibold text-slate-200">{level.label}</p>
+        <p className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-200">{level.label}</p>
       </div>
 
-      <AnimatedProgressBar attempts={attempts} pulseKey={progressPulseKey} />
+      <AnimatedProgressBar
+        attempts={barSteps}
+        pulseKey={pulseKey}
+        label={accountGamification ? "Прогресс уровня" : "Прогресс"}
+      />
 
       <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-3 text-center">
+        <div className="rounded-xl border border-slate-200 bg-white/80 p-3 text-center dark:border-slate-700/50 dark:bg-slate-900/40">
           <p className="text-[10px] uppercase text-slate-500">XP</p>
           <motion.p
-            key={xp}
+            key={displayXp}
             initial={{ scale: 1.2 }}
             animate={{ scale: 1 }}
-            className="text-lg font-bold tabular-nums text-cyan-300"
+            className="text-lg font-bold tabular-nums text-cyan-700 dark:text-cyan-300"
           >
-            {xp}
+            {displayXp}
           </motion.p>
         </div>
-        <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-3 text-center">
+        <div className="rounded-xl border border-slate-200 bg-white/80 p-3 text-center dark:border-slate-700/50 dark:bg-slate-900/40">
           <p className="text-[10px] uppercase text-slate-500">Серия</p>
-          <p className="text-lg font-bold text-orange-200">
-            {streak > 0 ? (
+          <p className="text-lg font-bold text-orange-700 dark:text-orange-200">
+            {displayStreak > 0 ? (
               <>
-                <span aria-hidden>🔥</span> {streak}
+                <span aria-hidden>🔥</span> {displayStreak}
               </>
             ) : (
-              <span className="text-slate-600">—</span>
+              <span className="text-slate-400 dark:text-slate-600">—</span>
             )}
           </p>
-          <p className="mt-0.5 text-[10px] text-slate-600">сильных ответов подряд</p>
+          <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-600">сильных ответов подряд</p>
         </div>
       </div>
 
       <MindMapVisual topic={topic} skillTree={skillTree} />
 
-      <div className="rounded-xl border border-dashed border-slate-700/60 p-3">
+      <div className="rounded-xl border border-dashed border-slate-300 p-3 dark:border-slate-700/60">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Подсказки UX</p>
-        <ul className="mt-2 space-y-1.5 text-xs text-slate-500">
+        <ul className="mt-2 space-y-1.5 text-xs text-slate-600 dark:text-slate-500">
           {TIPS.map((t) => (
             <li key={t}>· {t}</li>
           ))}

@@ -10,7 +10,7 @@ function BarRow({ label, filled, total = 3 }) {
         {Array.from({ length: total }, (_, i) => (
           <span
             key={i}
-            className={`h-2 w-4 rounded-sm ${i < filled ? "bg-emerald-500/80" : "bg-slate-700/80"}`}
+            className={`h-2 w-4 rounded-sm ${i < filled ? "bg-emerald-500/80" : "bg-slate-300 dark:bg-slate-700/80"}`}
           />
         ))}
       </div>
@@ -45,40 +45,42 @@ export default function ThinkingPanel({ profile, className = "" }) {
   const avgSteps = p.avg_steps_to_explain;
 
   return (
-    <div className={`rounded-xl border border-slate-700/60 bg-slate-900/30 p-3 ${className}`}>
+    <div
+      className={`rounded-xl border border-slate-200 bg-white/70 p-3 dark:border-slate-700/60 dark:bg-slate-900/30 ${className}`}
+    >
       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
         🧠 Как ты мыслишь
       </p>
-      <p className="mt-1 text-[11px] text-slate-600">
+      <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-600">
         {samples > 0
           ? `Скользящее среднее по последним ${Math.min(samples, 5)} репликам (эвристика, не диагноз)`
           : "Профиль обновится после нескольких твоих ответов в чате"}
       </p>
 
-      <div className="mt-3 space-y-2 text-xs text-slate-300">
+      <div className="mt-3 space-y-2 text-xs text-slate-800 dark:text-slate-300">
         <div>
           <span className="text-slate-500">Глубина:</span>{" "}
-          <span className="text-slate-200">{DEPTH_RU[depth] || depth}</span>
+          <span className="text-slate-900 dark:text-slate-200">{DEPTH_RU[depth] || depth}</span>
         </div>
         <BarRow label="рост" filled={depthFilled(depth)} />
 
         <div className="pt-1">
           <span className="text-slate-500">Логика:</span>{" "}
-          <span className="text-slate-200">{LOGIC_RU[logic] || logic}</span>
+          <span className="text-slate-900 dark:text-slate-200">{LOGIC_RU[logic] || logic}</span>
         </div>
         <BarRow label="связи" filled={logicFilled(logic)} />
 
         <div className="pt-1">
           <span className="text-slate-500">Уверенность:</span>{" "}
-          <span className="text-slate-200">{CONF_RU[confidence] || confidence}</span>
+          <span className="text-slate-900 dark:text-slate-200">{CONF_RU[confidence] || confidence}</span>
         </div>
         <BarRow label="тон" filled={confFilled(confidence)} />
       </div>
 
       {avgSteps != null ? (
-        <p className="mt-3 border-t border-slate-800/80 pt-2 text-[11px] text-slate-500">
+        <p className="mt-3 border-t border-slate-200 pt-2 text-[11px] text-slate-600 dark:border-slate-800/80 dark:text-slate-500">
           Среднее шагов до разбора:{" "}
-          <span className="tabular-nums text-slate-300">{avgSteps}</span>
+          <span className="tabular-nums text-slate-800 dark:text-slate-300">{avgSteps}</span>
         </p>
       ) : null}
     </div>

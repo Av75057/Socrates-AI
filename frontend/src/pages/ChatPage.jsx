@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router-dom";
 import ChatWindow from "../components/ChatWindow.jsx";
 import InputBox from "../components/InputBox.jsx";
@@ -15,8 +22,18 @@ import {
   shouldShowAlmostUnderstood,
   shouldShowVeryClose,
 } from "../utils/learningHints.js";
-import { apiFetch } from "../api/client.js";
-import { createConversation } from "../api/userApi.js";
+import { apiFetch, getToken } from "../api/client.js";
+import {
+  createConversation,
+  deleteMessage,
+  fetchConversation,
+  fetchMemoryProfile,
+  fetchSettings,
+  getRecommendation,
+  updateMessage,
+} from "../api/userApi.js";
+import ResumeLearningWidget from "../components/learning/ResumeLearningWidget.jsx";
+import PedagogyStatus from "../components/learning/PedagogyStatus.jsx";
 import { getMemoryUserId } from "../config/memoryUser.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import AssistPanel from "../components/AssistPanel.jsx";
@@ -31,7 +48,9 @@ import GamificationToastHost from "../components/gamification/GamificationToastH
 import {
   fetchAchievementsCatalog,
   fetchDailyChallenge,
+  fetchDailyChallengeMe,
   fetchGamificationProgress,
+  fetchGamificationProgressMe,
   postGamificationAction,
 } from "../api/gamificationApi.js";
 import { fetchPedagogyState, postPedagogyHint, postPedagogyMode } from "../api/pedagogyApi.js";
@@ -41,6 +60,24 @@ import FallacyNotification from "../components/pedagogy/FallacyNotification.jsx"
 import HintButton from "../components/pedagogy/HintButton.jsx";
 import { buildConnectionErrorHint } from "../utils/connectionErrorHint.js";
 import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxMetrics.js";
+import { parseDbMessageId } from "../utils/messageId.js";
+import OnboardingTour from "../components/OnboardingTour.jsx";
+
+function messagesFromNewConversation(c) {
+  const t = (c.opening_message || "").trim();
+  if (!t) return [];
+  return [
+    {
+      id:
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `open_${c.id}_${Date.now()}`,
+      role: "assistant",
+      text: t,
+      createdAt: Date.now(),
+    },
+  ];
+}
 
 async function postChat(sessionId, message, action, conversationId) {
   const payload = {
@@ -86,10 +123,14 @@ export default function ChatPage() {
   const sessionId = useChatStore((s) => s.sessionId);
   const xp = useChatStore((s) => s.xp);
   const streak = useChatStore((s) => s.streak);
+  const gamificationPublic = useChatStore((s) => s.gamificationPublic);
   const dontKnowCount = useChatStore((s) => s.dontKnowCount);
 
   const setFromServer = useChatStore((s) => s.setFromServer);
   const addMessage = useChatStore((s) => s.addMessage);
+  const patchLastExchangeMessageIds = useChatStore((s) => s.patchLastExchangeMessageIds);
+  const updateMessageText = useChatStore((s) => s.updateMessageText);
+  const removeMessagesFromId = useChatStore((s) => s.removeMessagesFromId);
   const setLoading = useChatStore((s) => s.setLoading);
   const canSend = useChatStore((s) => s.canSend);
   const markSent = useChatStore((s) => s.markSent);
@@ -103,7 +144,6 @@ export default function ChatPage() {
   const [idleHint, setIdleHint] = useState(false);
   const [xpToast, setXpToast] = useState(false);
   const [skillToast, setSkillToast] = useState(null);
-  const [gamProgress, setGamProgress] = useState(null);
   const [dailyCh, setDailyCh] = useState(null);
   const [achCatalog, setAchCatalog] = useState([]);
   const [achOpen, setAchOpen] = useState(false);
@@ -113,6 +153,11 @@ export default function ChatPage() {
   const [tutorMode, setTutorMode] = useState("friendly");
   const [pedDifficulty, setPedDifficulty] = useState(1);
   const [fallacyNotice, setFallacyNotice] = useState(null);
+  const [recommendation, setRecommendation] = useState(null);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [pedagogyIntro, setPedagogyIntro] = useState(false);
+  const [accountSettings, setAccountSettings] = useState(null);
+  const chatScrollRef = useRef(null);
 
   const lastActivityRef = useRef(Date.now());
 
@@ -207,17 +252,32 @@ export default function ChatPage() {
     if (userType) recordProfileTime(userType);
   }, [userType]);
 
+  /** Для аккаунта прогресс общий: не перезагружать при смене диалога (иначе мигание и гонки с API). Гость — привязка к sessionId. */
+  const gamificationReloadKey =
+    authUser?.id != null ? `auth:${authUser.id}` : `guest:${sessionId}`;
+
+  useLayoutEffect(() => {
+    useChatStore.getState().mergeGamificationFromPersisted();
+  }, [sessionId, conversationId]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setGamificationLoaded(false);
+      const sid = useChatStore.getState().sessionId;
+      const authed = !!getToken();
       const [p, dc, cat] = await Promise.all([
-        fetchGamificationProgress(sessionId),
-        fetchDailyChallenge(sessionId),
+        authed ? fetchGamificationProgressMe() : fetchGamificationProgress(sid),
+        authed ? fetchDailyChallengeMe() : fetchDailyChallenge(sid),
         fetchAchievementsCatalog(),
       ]);
       if (cancelled) return;
-      if (p) setGamProgress(p);
+      if (p) {
+        useChatStore.getState().applyGamificationProgress(p);
+      }
+      if (authed) {
+        useChatStore.getState().mergeGamificationFromPersisted();
+      }
       setDailyCh(dc);
       setAchCatalog(Array.isArray(cat) ? cat : []);
       setGamificationLoaded(true);
@@ -225,7 +285,26 @@ export default function ChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [gamificationReloadKey]);
+
+  /**
+   * При смене диалога перечитать общий прогресс по JWT (не зависит от session_key).
+   * Важно: /app без PrivateRoute — authUser может ещё грузиться, а токен уже есть;
+   * если ждать только authUser, панель временно уходит в «attempts» и выглядит как сброс.
+   */
+  useEffect(() => {
+    if (!getToken()) return;
+    let cancelled = false;
+    (async () => {
+      const p = await fetchGamificationProgressMe();
+      if (cancelled || !p) return;
+      useChatStore.getState().applyGamificationProgress(p);
+      useChatStore.getState().mergeGamificationFromPersisted();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, sessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -241,10 +320,123 @@ export default function ChatPage() {
   }, [sessionId]);
 
   useEffect(() => {
+    if (!authUser) {
+      setRecommendation(null);
+      return;
+    }
+    let cancelled = false;
+    setRecommendationLoading(true);
+    getRecommendation()
+      .then((r) => {
+        if (!cancelled) setRecommendation(r);
+      })
+      .catch(() => {
+        if (!cancelled) setRecommendation(null);
+      })
+      .finally(() => {
+        if (!cancelled) setRecommendationLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser]);
+
+  useEffect(() => {
+    if (!authUser) return;
+    if (!localStorage.getItem("socrates_pedagogy_intro_v1")) {
+      setPedagogyIntro(true);
+    }
+  }, [authUser]);
+
+  useEffect(() => {
+    if (!authUser) {
+      setAccountSettings(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await fetchSettings();
+        if (!cancelled) setAccountSettings(s);
+      } catch {
+        if (!cancelled) setAccountSettings(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.id]);
+
+  /** Память тьютора в Redis привязана к аккаунту, не к диалогу — подтягиваем при смене чата и при JWT без ожидания authUser. */
+  useEffect(() => {
+    if (!getToken()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const mp = await fetchMemoryProfile();
+        if (cancelled || !mp?.user_type) return;
+        useChatStore.getState().hydrateTutorMemoryFromProfile(mp);
+      } catch {
+        /* нет сети или старый API */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, sessionId, authUser?.id]);
+
+  /** После F5: подтянуть сообщения диалога, если в сторе уже есть conversationId. */
+  useEffect(() => {
+    if (!authUser || !conversationId) return;
+    if (useChatStore.getState().messages.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const detail = await fetchConversation(conversationId);
+        if (cancelled) return;
+        const sk = detail.session_key;
+        if (useChatStore.getState().sessionId !== sk) {
+          localStorage.setItem("socrates_session_id", sk);
+          localStorage.setItem(
+            "socrates_chat_resume",
+            JSON.stringify({ conversationId, sessionKey: sk }),
+          );
+        }
+        const initial = (detail.messages || []).map((m) => ({
+          id: `db-${m.id}`,
+          role: m.role === "tutor" ? "assistant" : "user",
+          text: m.content,
+          createdAt: m.created_at ? new Date(m.created_at).getTime() : Date.now(),
+        }));
+        useChatStore.setState({
+          sessionId: sk,
+          messages: initial,
+          topic: (detail.title || "").trim() || useChatStore.getState().topic,
+        });
+      } catch {
+        useChatStore.getState().clearResume();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser, conversationId]);
+
+  useEffect(() => {
     if (!skillToast) return undefined;
     const t = setTimeout(() => setSkillToast(null), 5200);
     return () => clearTimeout(t);
   }, [skillToast]);
+
+  const refreshRecommendation = useCallback(async () => {
+    if (!authUser) return;
+    try {
+      const r = await getRecommendation();
+      setRecommendation(r);
+    } catch {
+      /* ignore */
+    }
+  }, [authUser]);
 
   const run = useCallback(
     async (message, action = "none") => {
@@ -278,6 +470,15 @@ export default function ChatPage() {
         );
         addMessage("assistant", data.reply);
         setFromServer(data);
+        if (
+          data.persisted_user_message_id != null &&
+          data.persisted_assistant_message_id != null
+        ) {
+          patchLastExchangeMessageIds({
+            userId: data.persisted_user_message_id,
+            assistantId: data.persisted_assistant_message_id,
+          });
+        }
 
         if (data.pedagogy) {
           setTutorMode(data.pedagogy.mode || "friendly");
@@ -350,7 +551,7 @@ export default function ChatPage() {
             attempts_before: attemptsBefore,
           });
           if (gam?.progress) {
-            setGamProgress(gam.progress);
+            useChatStore.getState().applyGamificationProgress(gam.progress);
             setWisdomBump((k) => k + 1);
           }
           if (gam?.toasts?.length) {
@@ -360,8 +561,10 @@ export default function ChatPage() {
             }
           }
         }
-        const dc = await fetchDailyChallenge(sessionId);
+        const dc = authUser ? await fetchDailyChallengeMe() : await fetchDailyChallenge(sessionId);
         if (dc) setDailyCh(dc);
+
+        if (authUser) void refreshRecommendation();
       } catch (e) {
         const msg =
           e instanceof TypeError
@@ -383,6 +586,9 @@ export default function ChatPage() {
       setFromServer,
       setLoading,
       pushGamToast,
+      authUser,
+      refreshRecommendation,
+      patchLastExchangeMessageIds,
     ],
   );
 
@@ -424,12 +630,106 @@ export default function ChatPage() {
       setIdleHint(false);
       setFallacyNotice(null);
       resetProfileClock();
-      setActiveConversation(c.id, c.session_key, []);
+      setActiveConversation(c.id, c.session_key, messagesFromNewConversation(c));
       void postGamificationAction(c.session_key, "new_dialog", {});
+      try {
+        const r = await getRecommendation();
+        setRecommendation(r);
+      } catch {
+        /* ignore */
+      }
     } catch (e) {
       alert(e instanceof Error ? e.message : "Не удалось создать диалог");
     }
   };
+
+  const onResumeLastDialog = useCallback(async () => {
+    const last = recommendation?.last_conversation;
+    if (!last?.id) return;
+    try {
+      const detail = await fetchConversation(last.id);
+      const initial = (detail.messages || []).map((m) => ({
+        id: `db-${m.id}`,
+        role: m.role === "tutor" ? "assistant" : "user",
+        text: m.content,
+        createdAt: m.created_at ? new Date(m.created_at).getTime() : Date.now(),
+      }));
+      setFeedback(null);
+      setMicroFeedback(null);
+      setSimplerBanner(false);
+      setIdleHint(false);
+      setFallacyNotice(null);
+      resetProfileClock();
+      setActiveConversation(detail.id, detail.session_key, initial);
+      await refreshRecommendation();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Не удалось открыть диалог");
+    }
+  }, [recommendation, refreshRecommendation, setActiveConversation]);
+
+  const onNewRecommendedDialog = useCallback(async () => {
+    const title = (recommendation?.recommended_topic || "").trim() || "Новая тема";
+    try {
+      const c = await createConversation(title);
+      setFeedback(null);
+      setMicroFeedback(null);
+      setSimplerBanner(false);
+      setIdleHint(false);
+      setFallacyNotice(null);
+      resetProfileClock();
+      setActiveConversation(c.id, c.session_key, messagesFromNewConversation(c));
+      void postGamificationAction(c.session_key, "new_dialog", {});
+      await refreshRecommendation();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Не удалось создать диалог");
+    }
+  }, [recommendation, refreshRecommendation, setActiveConversation]);
+
+  const dismissPedagogyIntro = useCallback(() => {
+    localStorage.setItem("socrates_pedagogy_intro_v1", "1");
+    setPedagogyIntro(false);
+  }, []);
+
+  const handleEditMessage = useCallback(
+    async (messageId, text) => {
+      if (!authUser) return;
+      const id = parseDbMessageId(messageId);
+      if (id == null) return;
+      try {
+        await updateMessage(id, text);
+        updateMessageText(messageId, text);
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Не удалось сохранить");
+      }
+    },
+    [authUser, updateMessageText],
+  );
+
+  const handleDeleteMessage = useCallback(
+    async (messageId) => {
+      if (!authUser) return;
+      if (!window.confirm("Удалить это сообщение и все последующие?")) return;
+      const id = parseDbMessageId(messageId);
+      if (id == null) return;
+      try {
+        await deleteMessage(id);
+        removeMessagesFromId(messageId);
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Не удалось удалить");
+      }
+    },
+    [authUser, removeMessagesFromId],
+  );
+
+  const scrollChatToBottom = useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    });
+  }, []);
+
+  const showTypingFromSettings = accountSettings?.show_typing_indicator !== false;
 
   const avatarMood = useMemo(
     () =>
@@ -442,18 +742,18 @@ export default function ChatPage() {
   );
 
   return (
-    <div className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#0f172a] font-sans text-slate-100">
+    <div className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-slate-100 font-sans text-slate-900 dark:bg-[#0f172a] dark:text-slate-100">
       <GamificationToastHost items={gamToasts} onDismiss={dismissGamToast} />
       <AchievementsModal
         open={achOpen}
         onClose={() => setAchOpen(false)}
         catalog={achCatalog}
-        unlockedIds={gamProgress?.achievements}
+        unlockedIds={gamificationPublic?.achievements}
       />
       <XpFloater amount={5} show={xpToast} />
       {skillToast ? (
         <div className="pointer-events-none fixed left-0 right-0 top-[3.25rem] z-30 flex justify-center px-3 sm:top-16">
-          <div className="max-w-lg rounded-xl border border-violet-500/40 bg-violet-950/95 px-4 py-2.5 text-center text-sm text-violet-100 shadow-lg shadow-black/30">
+          <div className="max-w-lg rounded-xl border border-violet-400/50 bg-violet-100 px-4 py-2.5 text-center text-sm text-violet-900 shadow-lg shadow-violet-900/10 dark:border-violet-500/40 dark:bg-violet-950/95 dark:text-violet-100 dark:shadow-black/30">
             {skillToast}
           </div>
         </div>
@@ -463,47 +763,77 @@ export default function ChatPage() {
         onNewSession={onNewSession}
         xp={xp}
         streak={streak}
+        pedagogySlot={<PedagogyStatus />}
         wisdomSlot={
-          <WisdomPointsBadge
-            points={gamProgress?.wisdom_points ?? 0}
-            level={gamProgress?.level ?? 1}
-            onClick={() => setAchOpen(true)}
-            bumpSignal={wisdomBump}
-          />
+          <div data-tour="wisdom">
+            <WisdomPointsBadge
+              points={gamificationPublic?.wisdom_points ?? 0}
+              level={gamificationPublic?.level ?? 1}
+              onClick={() => setAchOpen(true)}
+              bumpSignal={wisdomBump}
+            />
+          </div>
         }
       />
       {!authUser ? (
-        <div className="mx-4 mt-2 rounded-lg border border-amber-600/40 bg-amber-950/30 px-3 py-2 text-center text-xs text-amber-100/95">
-          <Link to="/login" className="font-medium text-amber-300 underline">
+        <div className="mx-4 mt-2 rounded-lg border border-amber-500/50 bg-amber-50 px-3 py-2 text-center text-xs text-amber-950 dark:border-amber-600/40 dark:bg-amber-950/30 dark:text-amber-100/95">
+          <Link to="/login" className="font-medium text-amber-800 underline dark:text-amber-300">
             Войдите
           </Link>
           , чтобы сохранять историю диалогов в аккаунте.
         </div>
       ) : null}
+      {authUser && pedagogyIntro ? (
+        <div className="mx-4 mt-2 rounded-lg border border-cyan-400/40 bg-cyan-50/90 px-3 py-2 text-xs text-cyan-950 dark:border-cyan-700/50 dark:bg-cyan-950/40 dark:text-cyan-100/90">
+          <p>
+            Я буду отслеживать твои навыки, чтобы стать персональным наставником. Уровни и ошибки — в разделе
+            «Навыки» и «Педагогика» в профиле.
+          </p>
+          <button
+            type="button"
+            onClick={dismissPedagogyIntro}
+            className="mt-2 font-medium text-cyan-800 underline dark:text-cyan-300"
+          >
+            Понятно
+          </button>
+        </div>
+      ) : null}
       {authUser ? (
-        <div className="mx-4 mt-2 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-400">
-          <Link to="/profile" className="text-cyan-400 hover:underline">
+        <div data-tour="resume">
+          <ResumeLearningWidget
+            data={recommendation}
+            loading={recommendationLoading}
+            onContinueLast={onResumeLastDialog}
+            onNewRecommended={onNewRecommendedDialog}
+          />
+        </div>
+      ) : null}
+      {authUser ? (
+        <div className="mx-4 mt-2 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 dark:text-slate-400">
+          <Link to="/profile" className="text-cyan-700 hover:underline dark:text-cyan-400">
             Профиль
           </Link>
-          <Link to="/profile/history" className="text-cyan-400 hover:underline">
+          <Link to="/profile/history" className="text-cyan-700 hover:underline dark:text-cyan-400">
             История
           </Link>
           {String(authUser.role || "").toLowerCase() === "admin" ? (
-            <Link to="/admin" className="text-amber-400 hover:underline">
+            <Link to="/admin" className="text-amber-700 hover:underline dark:text-amber-400">
               Админ-панель
             </Link>
           ) : null}
           <button
             type="button"
             onClick={onNewAccountDialog}
-            className="rounded-md border border-slate-600 px-2 py-1 text-slate-300 hover:bg-slate-800"
+            className="rounded-md border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-200 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             Новый диалог (сохранить в аккаунте)
           </button>
           {conversationId != null ? (
-            <span className="text-slate-500">Диалог #{conversationId}</span>
+            <span className="text-slate-500 dark:text-slate-500">Диалог #{conversationId}</span>
           ) : (
-            <span className="text-amber-400/90">Гостевой Redis-сессия — нажмите, чтобы вести диалог в БД</span>
+            <span className="text-amber-800 dark:text-amber-400/90">
+              Гостевой Redis-сессия — нажмите, чтобы вести диалог в БД
+            </span>
           )}
         </div>
       ) : null}
@@ -519,7 +849,7 @@ export default function ChatPage() {
           <ModeIndicator mode={mode} attempts={attempts} frustration={frustration} />
           <UserStateBadge type={userType} />
           <UserMemoryPanel memory={memory} className="mx-4 mt-0 lg:hidden" />
-          <div className="mx-4 lg:hidden">
+          <div className="mx-4 lg:hidden" data-tour="skills-mobile">
             <SkillTree skillTree={skillTree} topic={topic} />
           </div>
           <ThinkingPanel profile={memory.thinking_profile} className="mx-4 lg:hidden" />
@@ -530,6 +860,7 @@ export default function ChatPage() {
             onExplain={onGiveUp}
           />
           <ChatWindow
+            ref={chatScrollRef}
             messages={messages}
             loading={loading}
             feedback={feedback}
@@ -537,6 +868,11 @@ export default function ChatPage() {
             simplerBanner={simplerBanner}
             idleHint={idleHint}
             assistLevel={frustrationLevel}
+            userLabel={authUser?.full_name || authUser?.email || "Я"}
+            canEditMessages={!!authUser}
+            onEditMessage={handleEditMessage}
+            onDeleteMessage={handleDeleteMessage}
+            showTypingIndicator={showTypingFromSettings}
             onIdleHintDismiss={() => {
               setIdleHint(false);
               bumpActivity();
@@ -552,6 +888,7 @@ export default function ChatPage() {
             onGiveUp={onGiveUp}
             onQuickDontKnow={() => bumpUxMetric("dontKnowQuick")}
             onUserActivity={bumpActivity}
+            onInputFocus={scrollChatToBottom}
             topBar={
               <>
                 <TutorModeSelector
@@ -580,8 +917,16 @@ export default function ChatPage() {
           avatarMood={avatarMood}
           whisperIndex={attempts}
           progressPulseKey={attempts}
+          accountGamification={!!getToken()}
+          gamificationPublic={gamificationPublic}
         />
       </div>
+      <OnboardingTour
+        enabled={!!authUser && !!accountSettings && accountSettings.has_seen_onboarding === false}
+        onFinished={() =>
+          setAccountSettings((s) => (s ? { ...s, has_seen_onboarding: true } : s))
+        }
+      />
     </div>
   );
 }

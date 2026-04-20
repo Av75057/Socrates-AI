@@ -15,15 +15,15 @@ export default function WisdomPointsBadge({ points = 0, level = 1, onClick, bump
       type="button"
       onClick={onClick}
       title="Очки мудрости и достижения"
-      className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border border-amber-500/40 bg-slate-900/90 px-3 py-1.5 text-amber-200 shadow-md transition active:scale-[0.98] sm:min-h-0 [@media(hover:hover)]:hover:border-amber-400/60 [@media(hover:hover)]:hover:bg-slate-800/90 ${
+      className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border border-amber-500/50 bg-amber-50 px-3 py-1.5 text-amber-900 shadow-md transition active:scale-[0.98] sm:min-h-0 [@media(hover:hover)]:hover:border-amber-500 [@media(hover:hover)]:hover:bg-amber-100 dark:border-amber-500/40 dark:bg-slate-900/90 dark:text-amber-200 dark:[@media(hover:hover)]:hover:border-amber-400/60 dark:[@media(hover:hover)]:hover:bg-slate-800/90 ${
         pulse ? "animate-wisdomPulse" : ""
       }`}
     >
       <span className="text-lg leading-none" aria-hidden>
         🦉
       </span>
-      <span className="font-display text-sm font-bold tabular-nums text-amber-300">{points}</span>
-      <span className="hidden text-[10px] font-medium uppercase tracking-wide text-amber-500/90 sm:inline">
+      <span className="font-display text-sm font-bold tabular-nums text-amber-800 dark:text-amber-300">{points}</span>
+      <span className="hidden text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-500/90 sm:inline">
         ур. {level}
       </span>
     </button>

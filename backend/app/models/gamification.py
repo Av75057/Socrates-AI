@@ -119,6 +119,32 @@ class UserProgressPublic(BaseModel):
     last_daily_challenge_date: date | None = None
     streak_days: int = 0
     daily_challenge_id: str | None = None
+    total_user_turns: int = 0
+    logic_good_streak: int = 0
+
+
+def merge_user_progress_states(a: UserProgressState, b: UserProgressState) -> UserProgressState:
+    """
+    Объединить два состояния (например гостевой ключ Redis и аккаунт пользователя).
+    Накопительные поля — по максимуму; ежедневные флаги — с той стороны, где больше очков мудрости.
+    """
+    take_daily_from = a if a.wisdom_points >= b.wisdom_points else b
+    out = take_daily_from.model_copy(deep=True)
+    out.wisdom_points = max(a.wisdom_points, b.wisdom_points)
+    out.achievements = list(dict.fromkeys([*a.achievements, *b.achievements]))
+    out.total_user_turns = max(a.total_user_turns, b.total_user_turns)
+    out.logic_good_streak = max(a.logic_good_streak, b.logic_good_streak)
+    out.streak_days = max(a.streak_days, b.streak_days)
+    out.challenges_completed_total = max(a.challenges_completed_total, b.challenges_completed_total)
+    out.answered_while_hard_session = max(a.answered_while_hard_session, b.answered_while_hard_session)
+    out.clarifying_questions_session = max(a.clarifying_questions_session, b.clarifying_questions_session)
+    out.give_up_used_session = a.give_up_used_session or b.give_up_used_session
+    act = [d for d in (a.last_activity_utc_date, b.last_activity_utc_date) if d is not None]
+    out.last_activity_utc_date = max(act) if act else None
+    lcd = [d for d in (a.last_daily_challenge_date, b.last_daily_challenge_date) if d is not None]
+    out.last_daily_challenge_date = max(lcd) if lcd else None
+    out.level = recalc_level(out.wisdom_points)
+    return out
 
 
 def state_to_public(s: UserProgressState) -> UserProgressPublic:
@@ -131,6 +157,8 @@ def state_to_public(s: UserProgressState) -> UserProgressPublic:
         last_daily_challenge_date=s.last_daily_challenge_date,
         streak_days=s.streak_days,
         daily_challenge_id=s.daily_challenge_id,
+        total_user_turns=s.total_user_turns,
+        logic_good_streak=s.logic_good_streak,
     )
 
 

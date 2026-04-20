@@ -10,8 +10,10 @@
   },
   "dependencies": {
     "framer-motion": "^12.38.0",
+    "lucide-react": "^1.8.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-joyride": "^3.0.2",
     "react-router-dom": "^6.28.0",
     "zustand": "^5.0.0"
   },

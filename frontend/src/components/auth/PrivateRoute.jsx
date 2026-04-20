@@ -7,7 +7,7 @@ export default function PrivateRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0f172a] text-slate-300">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600 dark:bg-[#0f172a] dark:text-slate-300">
         Загрузка…
       </div>
     );

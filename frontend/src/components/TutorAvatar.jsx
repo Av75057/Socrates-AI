@@ -25,7 +25,7 @@ export default function TutorAvatar({ mood = "neutral", whisperIndex = 0 }) {
         initial={{ scale: 0.85, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 400, damping: 24 }}
-        className={`flex h-16 w-16 items-center justify-center rounded-full bg-[#1e293b] text-3xl shadow-lg ring-2 ${m.ring} ${m.glow}`}
+        className={`flex h-16 w-16 items-center justify-center rounded-full bg-slate-200 text-3xl shadow-lg ring-2 dark:bg-[#1e293b] ${m.ring} ${m.glow}`}
       >
         {m.emoji}
       </motion.div>

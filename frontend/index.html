@@ -1,6 +1,18 @@
 <!doctype html>
 <html lang="ru">
   <head>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("socrates_theme");
+          var d = document.documentElement;
+          if (t === "light") d.classList.remove("dark");
+          else d.classList.add("dark");
+        } catch (e) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta
       name="viewport"
@@ -8,7 +20,7 @@
     />
     <title>Socrates AI</title>
   </head>
-  <body class="bg-[#0f172a] text-slate-100 antialiased">
+  <body class="antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

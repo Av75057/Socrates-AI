@@ -77,6 +77,8 @@ def main() -> None:
                 tutor_mode="friendly",
                 theme="dark",
                 notifications_enabled=True,
+                has_seen_onboarding=False,
+                show_typing_indicator=True,
             )
         )
         db.add(

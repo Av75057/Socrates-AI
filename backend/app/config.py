@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-use-long-random-string"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
+    # Обновление навыков и педагогики в БД после ответов в чате
+    skill_update_enabled: bool = True
+    # Модель для редкой проверки logical_consistency (OpenRouter id)
+    logical_consistency_model: str = "google/gemini-2.0-flash-lite"
+    # Проверять логическую согласованность каждые N осмысленных ответов (0 = отключить LLM)
+    logical_consistency_every_n: int = 5
+    # Первый вопрос тьютора при POST /users/me/conversations (LLM)
+    conversation_opening_enabled: bool = True
     # OpenRouter: ключ и опции также можно задать только через env (см. model_router.py).
 
 

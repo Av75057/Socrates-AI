@@ -13,6 +13,7 @@ export default function InputBox({
   onGiveUp,
   onQuickDontKnow,
   onUserActivity,
+  onInputFocus,
   topBar = null,
 }) {
   const [value, setValue] = useState("");
@@ -44,17 +45,22 @@ export default function InputBox({
   };
 
   const rowNeutral =
-    "border border-slate-600/70 bg-[#0f172a] text-slate-200 active:bg-slate-800 [@media(hover:hover)]:hover:border-slate-500";
+    "border border-slate-300 bg-white text-slate-800 active:bg-slate-100 [@media(hover:hover)]:hover:border-slate-400 dark:border-slate-600/70 dark:bg-[#0f172a] dark:text-slate-200 dark:active:bg-slate-800 dark:[@media(hover:hover)]:hover:border-slate-500";
   const rowAmber =
-    "border border-amber-500/45 bg-amber-500/15 font-semibold text-amber-100 active:bg-amber-500/25 [@media(hover:hover)]:hover:bg-amber-500/20";
+    "border border-amber-600/40 bg-amber-100 font-semibold text-amber-950 active:bg-amber-200 [@media(hover:hover)]:hover:bg-amber-200 dark:border-amber-500/45 dark:bg-amber-500/15 dark:text-amber-100 dark:active:bg-amber-500/25 dark:[@media(hover:hover)]:hover:bg-amber-500/20";
   const rowRose =
-    "border border-rose-500/45 bg-rose-500/12 font-semibold text-rose-100 active:bg-rose-500/22 [@media(hover:hover)]:hover:bg-rose-500/18";
+    "border border-rose-500/50 bg-rose-100 font-semibold text-rose-900 active:bg-rose-200 [@media(hover:hover)]:hover:bg-rose-200 dark:border-rose-500/45 dark:bg-rose-500/12 dark:text-rose-100 dark:active:bg-rose-500/22 dark:[@media(hover:hover)]:hover:bg-rose-500/18";
 
   return (
-    <div className="input-dock z-20 shrink-0 border-t border-slate-800 bg-[#020617]/98 px-3 pt-3 backdrop-blur max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:right-0 lg:relative lg:px-4">
+    <div
+      data-tour="chat-input"
+      className="input-dock z-20 shrink-0 border-t border-slate-200 bg-slate-50/98 px-3 pt-3 backdrop-blur max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:right-0 lg:relative lg:px-4 dark:border-slate-800 dark:bg-[#020617]/98"
+    >
       <div className="mx-auto flex max-w-3xl flex-col gap-3">
         {topBar ? (
-          <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/70 pb-2">{topBar}</div>
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/90 pb-2 dark:border-slate-800/70">
+            {topBar}
+          </div>
         ) : null}
         <div className="grid grid-cols-2 gap-2">
           {ut === "lazy" ? (
@@ -157,7 +163,10 @@ export default function InputBox({
               onUserActivity?.();
               setValue(e.target.value);
             }}
-            onFocus={() => onUserActivity?.()}
+            onFocus={() => {
+              onUserActivity?.();
+              onInputFocus?.();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -166,7 +175,7 @@ export default function InputBox({
             }}
             placeholder="Напиши ответ…"
             disabled={loading}
-            className="min-h-[48px] max-h-[8rem] flex-1 resize-none rounded-xl border border-slate-600/80 bg-[#0f172a] px-4 py-3 text-base leading-snug text-white placeholder:text-slate-500 focus:border-blue-500/60 focus:outline-none focus:ring-2 focus:ring-blue-500/25 disabled:opacity-60"
+            className="min-h-[48px] max-h-[8rem] flex-1 resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm leading-snug text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/25 disabled:opacity-60 sm:text-base dark:border-slate-600/80 dark:bg-[#0f172a] dark:text-white dark:placeholder:text-slate-500 dark:focus:border-blue-500/60"
           />
           <button
             type="button"
@@ -179,7 +188,7 @@ export default function InputBox({
           </button>
         </div>
 
-        <p className="hidden pb-1 text-[11px] text-slate-600 sm:block">
+        <p className="hidden pb-1 text-[11px] text-slate-500 sm:block dark:text-slate-600">
           Enter — отправить · Shift+Enter — новая строка · пауза ~0.8 с
         </p>
       </div>

@@ -14,6 +14,17 @@ export async function fetchGamificationProgress(sessionId) {
   }
 }
 
+/** Прогресс по JWT (не зависит от session_id чата). */
+export async function fetchGamificationProgressMe() {
+  try {
+    const res = await apiFetch("/gamification/me/progress");
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchAchievementsCatalog() {
   try {
     const res = await apiFetch("/gamification/achievements");
@@ -28,6 +39,16 @@ export async function fetchAchievementsCatalog() {
 export async function fetchDailyChallenge(sessionId) {
   try {
     const res = await apiFetch(`/gamification/daily-challenge/${encodeURIComponent(sessionId)}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchDailyChallengeMe() {
+  try {
+    const res = await apiFetch("/gamification/me/daily-challenge");
     if (!res.ok) return null;
     return await res.json();
   } catch {

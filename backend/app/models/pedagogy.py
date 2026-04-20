@@ -21,6 +21,7 @@ class PedagogyTurnContext:
     tutor_mode: str = "friendly"
     difficulty_level: int = 1
     fallacy_instruction: str = ""
+    persistent_profile: str = ""
 
 
 class UserPedagogyState(BaseModel):

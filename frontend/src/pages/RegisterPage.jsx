@@ -31,11 +31,11 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#0f172a] px-4 text-slate-100">
-      <h1 className="font-display text-2xl font-bold text-white">Регистрация</h1>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 text-slate-900 dark:bg-[#0f172a] dark:text-slate-100">
+      <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-white">Регистрация</h1>
       <form onSubmit={onSubmit} className="mt-8 w-full max-w-sm space-y-4">
         {error ? (
-          <p className="rounded-lg border border-red-500/40 bg-red-950/50 px-3 py-2 text-sm text-red-200">
+          <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-500/40 dark:bg-red-950/50 dark:text-red-200">
             {error}
           </p>
         ) : null}
@@ -45,7 +45,7 @@ export default function RegisterPage() {
             type="text"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
           />
         </div>
         <div>
@@ -55,7 +55,7 @@ export default function RegisterPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
           />
         </div>
         <div>
@@ -66,7 +66,7 @@ export default function RegisterPage() {
             minLength={6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
           />
         </div>
         <div>
@@ -76,7 +76,7 @@ export default function RegisterPage() {
             required
             value={password2}
             onChange={(e) => setPassword2(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
           />
         </div>
         <button
@@ -86,9 +86,9 @@ export default function RegisterPage() {
           Создать аккаунт
         </button>
       </form>
-      <p className="mt-6 text-sm text-slate-400">
+      <p className="mt-6 text-sm text-slate-600 dark:text-slate-400">
         Уже есть аккаунт?{" "}
-        <Link to="/login" className="text-cyan-400 underline">
+        <Link to="/login" className="text-cyan-700 underline dark:text-cyan-400">
           Войти
         </Link>
       </p>

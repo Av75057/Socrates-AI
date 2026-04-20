@@ -38,9 +38,9 @@ export default function ConversationViewPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#0f172a] px-6 py-10 text-red-300">
+      <div className="min-h-screen bg-slate-50 px-6 py-10 text-red-700 dark:bg-[#0f172a] dark:text-red-300">
         {error}{" "}
-        <Link to="/profile/history" className="text-cyan-400 underline">
+        <Link to="/profile/history" className="text-cyan-700 underline dark:text-cyan-400">
           Назад
         </Link>
       </div>
@@ -48,20 +48,20 @@ export default function ConversationViewPage() {
   }
   if (!data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0f172a] text-slate-400">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600 dark:bg-[#0f172a] dark:text-slate-400">
         Загрузка…
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0f172a] px-6 py-10 text-slate-100">
+    <div className="min-h-screen bg-slate-50 px-6 py-10 text-slate-900 dark:bg-[#0f172a] dark:text-slate-100">
       <nav className="mb-6 flex gap-4 text-sm">
-        <Link to="/profile/history" className="text-cyan-400 underline">
+        <Link to="/profile/history" className="text-cyan-700 underline dark:text-cyan-400">
           ← К списку
         </Link>
       </nav>
-      <h1 className="font-display text-xl font-bold text-white">{data.title}</h1>
+      <h1 className="font-display text-xl font-bold text-slate-900 dark:text-white">{data.title}</h1>
       <button
         type="button"
         onClick={continueChat}
@@ -75,12 +75,12 @@ export default function ConversationViewPage() {
             key={m.id}
             className={`rounded-lg border px-4 py-3 text-sm ${
               m.role === "user"
-                ? "border-slate-600 bg-slate-900/60"
-                : "border-cyan-900/50 bg-cyan-950/30"
+                ? "border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-900/60"
+                : "border-cyan-200 bg-cyan-50 dark:border-cyan-900/50 dark:bg-cyan-950/30"
             }`}
           >
             <span className="text-xs uppercase text-slate-500">{m.role}</span>
-            <p className="mt-1 whitespace-pre-wrap text-slate-200">{m.content}</p>
+            <p className="mt-1 whitespace-pre-wrap text-slate-800 dark:text-slate-200">{m.content}</p>
           </div>
         ))}
       </div>

@@ -65,6 +65,17 @@ class User(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    pedagogy: Mapped["UserPedagogy | None"] = relationship(
+        "UserPedagogy",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    user_skills: Mapped[list["UserSkill"]] = relationship(
+        "UserSkill",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class UserSettings(Base):
@@ -76,6 +87,8 @@ class UserSettings(Base):
     tutor_mode: Mapped[str] = mapped_column(String(32), default="friendly", nullable=False)
     theme: Mapped[str | None] = mapped_column(String(16), nullable=True)
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    has_seen_onboarding: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    show_typing_indicator: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     user: Mapped[User] = relationship(back_populates="settings")
 
@@ -126,6 +139,59 @@ class Message(Base):
     )
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class Skill(Base):
+    """Справочник навыков (общий для всех пользователей)."""
+
+    __tablename__ = "skills"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    skill_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class UserSkill(Base):
+    __tablename__ = "user_skills"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    skill_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("skills.skill_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_updated: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    user: Mapped["User"] = relationship(back_populates="user_skills")
+    skill: Mapped["Skill"] = relationship()
+
+
+class UserPedagogy(Base):
+    """Долговременное педагогическое состояние (между диалогами)."""
+
+    __tablename__ = "user_pedagogy"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    current_difficulty: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    total_deep_responses: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_shallow_responses: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    fallacy_counts: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    last_active_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    logic_check_counter: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="pedagogy")
 
 
 class GamificationProgress(Base):

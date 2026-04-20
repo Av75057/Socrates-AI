@@ -123,7 +123,7 @@ class ModelRouter:
         except (httpx.HTTPError, ValueError, KeyError, json.JSONDecodeError):
             pass
 
-        return "Попробуй объяснить это своими словами 🙂"
+        return "Попробуй объяснить это своими словами по-русски."
 
     async def call_pedagogy_llm(self, system_prompt: str, user_prompt: str) -> str:
         """Лёгкая модель для анализа ошибок и глубины (JSON в ответе)."""

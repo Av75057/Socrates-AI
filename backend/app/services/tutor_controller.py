@@ -145,6 +145,7 @@ class TutorController:
                 tutor_mode=ped.tutor_mode,
                 difficulty_level=ped.difficulty_level,
                 fallacy_instruction=ped.fallacy_instruction,
+                persistent_profile=ped.persistent_profile,
             )
             reply = await self._router.generate(prompt, user_line, state.mode)
             state.history.append({"role": "user", "content": user_line})
@@ -170,6 +171,7 @@ class TutorController:
                 tutor_mode=ped.tutor_mode,
                 difficulty_level=ped.difficulty_level,
                 fallacy_instruction=ped.fallacy_instruction,
+                persistent_profile=ped.persistent_profile,
             )
             reply = await self._router.generate(prompt, hint_line, state.mode)
             state.history.append({"role": "user", "content": hint_line})
@@ -193,6 +195,7 @@ class TutorController:
             tutor_mode=ped.tutor_mode,
             difficulty_level=ped.difficulty_level,
             fallacy_instruction=ped.fallacy_instruction,
+            persistent_profile=ped.persistent_profile,
         )
         reply = await self._router.generate(prompt, text, state.mode)
         state.history.append({"role": "user", "content": text})
