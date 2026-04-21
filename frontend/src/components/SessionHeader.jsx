@@ -13,11 +13,15 @@ export default function SessionHeader({
   streak = 0,
   wisdomSlot = null,
   pedagogySlot = null,
+  statusSlot = null,
+  /** Иконка вызова дня на узком экране (до lg), открывает модалку */
+  dailyChallengeHeaderSlot = null,
 }) {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const isAdmin = String(user?.role || "").toLowerCase() === "admin";
+  const isEducator = ["educator", "admin"].includes(String(user?.role || "").toLowerCase());
 
   return (
     <>
@@ -74,6 +78,14 @@ export default function SessionHeader({
                 >
                   Настройки
                 </Link>
+                {isEducator ? (
+                  <Link
+                    to="/educator"
+                    className="rounded-lg px-2 py-1.5 text-violet-800 hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-violet-950/50"
+                  >
+                    Учитель
+                  </Link>
+                ) : null}
                 {isAdmin ? (
                   <Link
                     to="/admin"
@@ -115,8 +127,10 @@ export default function SessionHeader({
                 <span className="text-slate-500">Задай тему: «Хочу изучить …»</span>
               )}
             </p>
+            {statusSlot ? <div className="mt-1">{statusSlot}</div> : null}
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            {dailyChallengeHeaderSlot}
             <ThemeToggle />
             {user ? (
               <div className="relative">
@@ -197,6 +211,7 @@ export default function SessionHeader({
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
         isAdmin={isAdmin}
+        isEducator={isEducator}
         loggedIn={!!user}
       />
     </>

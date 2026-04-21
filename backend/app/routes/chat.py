@@ -4,12 +4,13 @@ import asyncio
 import logging
 from typing import Any, Literal
 
+from sqlalchemy import select
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps_auth import get_current_user_optional
-from app.db.models import User
+from app.db.models import Assignment, ClassStudent, User
 from app.config import get_settings
 from app.db.session import SessionLocal
 from app.deps import redis_dep
@@ -33,7 +34,9 @@ from app.services.skill_tree_manager import (
 from app.services.tutor_controller import TutorController
 from app.services.conversation_db import (
     append_messages,
+    find_duplicate_turn,
     get_owned_conversation,
+    get_or_create_conversation_by_session_key,
     hydrate_state_history_from_conversation_if_empty,
 )
 from app.services.learning_service import (
@@ -41,7 +44,7 @@ from app.services.learning_service import (
     hydrate_session_pedagogy_from_db,
     update_user_learning_progress_sync,
 )
-from app.services.user_settings_db import get_tutor_mode
+from app.services.user_settings_db import build_model_router_for_user, get_tutor_mode
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -78,6 +81,15 @@ class ChatRequest(BaseModel):
         None,
         max_length=128,
         description="Стабильный id для долговременной памяти (иначе session_id)",
+    )
+    client_message_id: str | None = Field(
+        None,
+        max_length=64,
+        description="Идентификатор клиентского сообщения для дедупликации повторных отправок",
+    )
+    assignment_id: int | None = Field(
+        None,
+        description="Назначение/домашнее задание, с которым связан диалог",
     )
 
 
@@ -117,6 +129,8 @@ class ChatResponse(BaseModel):
     pedagogy: PedagogyOut
     persisted_user_message_id: int | None = None
     persisted_assistant_message_id: int | None = None
+    conversation_id: int | None = None
+    session_key: str | None = None
 
 
 def _line_for_memory_update(body: ChatRequest) -> str:
@@ -128,19 +142,71 @@ def _line_for_memory_update(body: ChatRequest) -> str:
     return m
 
 
+def _initial_conversation_title(body: ChatRequest) -> str:
+    seed = (body.message or "").strip()
+    if not seed:
+        seed = _line_for_memory_update(body)
+    seed = seed.strip()
+    if not seed or seed.startswith("("):
+        return "Новый диалог"
+    return seed[:50]
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     body: ChatRequest,
     r=Depends(redis_dep),
     db_user: User | None = Depends(get_current_user_optional),
 ):
-    if body.conversation_id is not None:
+    msg_stripped = (body.message or "").strip()
+    idle_turn = body.action == "none" and not msg_stripped
+    active_conversation_id = body.conversation_id
+    active_assignment_id = body.assignment_id
+
+    if db_user and active_assignment_id is not None:
+
+        def _verify_assignment() -> int | None:
+            with SessionLocal() as db:
+                a = db.get(Assignment, active_assignment_id)
+                if a is None:
+                    return None
+                if db_user.role == "admin":
+                    return a.id
+                row = db.execute(
+                    select(ClassStudent).where(
+                        ClassStudent.class_id == a.class_id,
+                        ClassStudent.student_id == db_user.id,
+                    )
+                ).scalar_one_or_none()
+                return a.id if row is not None else None
+
+        checked_assignment_id = await run_in_threadpool(_verify_assignment)
+        if checked_assignment_id is None:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        active_assignment_id = checked_assignment_id
+
+    if db_user and not idle_turn and active_conversation_id is None:
+
+        def _ensure_conv() -> int:
+            with SessionLocal() as db:
+                c = get_or_create_conversation_by_session_key(
+                    db,
+                    db_user.id,
+                    body.session_id,
+                    _initial_conversation_title(body),
+                    assignment_id=active_assignment_id,
+                )
+                return c.id
+
+        active_conversation_id = await run_in_threadpool(_ensure_conv)
+
+    if active_conversation_id is not None:
         if db_user is None:
             raise HTTPException(status_code=401, detail="Authentication required when conversation_id is set")
 
         def _verify_conv() -> str | None:
             with SessionLocal() as db:
-                c = get_owned_conversation(db, db_user.id, body.conversation_id)
+                c = get_owned_conversation(db, db_user.id, active_conversation_id)
                 return c.session_key if c else None
 
         sk = await run_in_threadpool(_verify_conv)
@@ -153,12 +219,12 @@ async def chat(
             )
 
     state = await load_state(r, body.session_id)
-    if db_user and body.conversation_id is not None:
+    if db_user and active_conversation_id is not None:
 
         def _hydr_history() -> None:
             with SessionLocal() as db:
                 hydrate_state_history_from_conversation_if_empty(
-                    db, db_user.id, body.conversation_id, state
+                    db, db_user.id, active_conversation_id, state
                 )
 
         await run_in_threadpool(_hydr_history)
@@ -189,16 +255,91 @@ async def chat(
         except ValueError:
             pass
 
-    msg_stripped = (body.message or "").strip()
     cheat = bool(msg_stripped and is_cheating(msg_stripped))
-    idle_turn = body.action == "none" and not msg_stripped
+
+    def _make_router() -> ModelRouter:
+        if db_user is None:
+            return ModelRouter()
+        with SessionLocal() as db:
+            return build_model_router_for_user(db, db_user.id)
+
+    router = await run_in_threadpool(_make_router)
+
+    if db_user and active_conversation_id is not None and not idle_turn and body.client_message_id:
+
+        def _find_duplicate() -> tuple[int, int, str, dict[str, Any] | None] | None:
+            with SessionLocal() as db:
+                pair = find_duplicate_turn(
+                    db,
+                    db_user.id,
+                    active_conversation_id,
+                    body.client_message_id or "",
+                )
+                if pair is None:
+                    return None
+                user_msg, tutor_msg = pair
+                return (
+                    user_msg.id,
+                    tutor_msg.id,
+                    tutor_msg.content,
+                    user_msg.fallacy_detected if isinstance(user_msg.fallacy_detected, dict) else None,
+                )
+
+        duplicate = await run_in_threadpool(_find_duplicate)
+        if duplicate is not None:
+            user_mid, tutor_mid, stored_reply, stored_fallacy = duplicate
+            tree_hint = resolve_track_hint(state.topic, memory, body.message)
+            subj = canonical_subject_topic(msg_stripped)
+            if subj:
+                tree_hint = f"{subj} {tree_hint}".strip()
+            tree_hint = align_tree_hint_with_session_topic(tree_hint, state.topic)
+            skill_tree = build_skill_tree_payload(
+                dict(memory.skill_status), dict(memory.skill_status), track_hint=tree_hint, topic=state.topic
+            )
+            ut = state.user_type if state.user_type in ("lazy", "anxious", "thinker") else "lazy"
+            md = memory.to_dict()
+            fal = FallacyOut()
+            if stored_fallacy:
+                fal = FallacyOut(
+                    has_fallacy=bool(stored_fallacy.get("has_fallacy")),
+                    fallacy_type=stored_fallacy.get("fallacy_type"),
+                    fallacy_description=stored_fallacy.get("fallacy_description"),
+                    suggestion=stored_fallacy.get("suggestion"),
+                )
+            return ChatResponse(
+                reply=stored_reply,
+                mode=state.mode,
+                attempts=state.attempts,
+                frustration=state.frustration,
+                frustration_level=min(3, state.frustration),
+                user_type=ut,
+                topic=state.topic,
+                memory=MemoryOut(
+                    topics=md["topics"],
+                    mistakes=md["mistakes"],
+                    progress=md["progress"],
+                    user_type=md["user_type"],
+                    skill_status=md.get("skill_status") or {},
+                    thinking_profile=md.get("thinking_profile") or {},
+                ),
+                skill_tree=skill_tree,
+                pedagogy=PedagogyOut(
+                    mode=_pedagogy_mode_str(pedagogy_state.mode),
+                    difficulty_level=pedagogy_state.difficulty_level,
+                    last_response_depth=round(pedagogy_state.last_response_depth, 3),
+                    fallacy=fal,
+                ),
+                persisted_user_message_id=user_mid,
+                persisted_assistant_message_id=tutor_mid,
+                conversation_id=active_conversation_id,
+                session_key=body.session_id,
+            )
 
     analysis: dict[str, Any] | None = None
     fallacy_instr = ""
     if not cheat and not idle_turn and body.action == "none" and msg_stripped:
-        router_a = ModelRouter()
         analysis = await analyze_response(
-            router_a,
+            router,
             msg_stripped,
             _last_assistant_question(state.history),
             _history_to_text(state.history, max_messages=10),
@@ -217,7 +358,6 @@ async def chat(
         persistent_profile=persistent_profile,
     )
 
-    router = ModelRouter()
     controller = TutorController(router)
     try:
         reply, mode = await controller.handle_turn(
@@ -292,7 +432,7 @@ async def chat(
     )
 
     persisted_pair: tuple[int, int] | None = None
-    if db_user and body.conversation_id and not cheat and not idle_turn:
+    if db_user and active_conversation_id and not idle_turn:
         user_line = (
             msg_stripped
             if body.action == "none" and msg_stripped
@@ -307,13 +447,21 @@ async def chat(
                 "suggestion": analysis.get("suggestion"),
                 "depth_combined": analysis.get("depth_combined"),
             }
-        cid = body.conversation_id
+        cid = active_conversation_id
         uid = db_user.id
         rep = reply
 
         def _persist_turn() -> tuple[int, int] | None:
             with SessionLocal() as db:
-                return append_messages(db, cid, uid, user_line, rep, fallacy_payload)
+                return append_messages(
+                    db,
+                    cid,
+                    uid,
+                    user_line,
+                    rep,
+                    fallacy_payload,
+                    client_message_id=body.client_message_id,
+                )
 
         persisted_pair = await run_in_threadpool(_persist_turn)
 
@@ -337,4 +485,6 @@ async def chat(
         pedagogy=ped_out,
         persisted_user_message_id=persisted_pair[0] if persisted_pair else None,
         persisted_assistant_message_id=persisted_pair[1] if persisted_pair else None,
+        conversation_id=active_conversation_id,
+        session_key=body.session_id,
     )

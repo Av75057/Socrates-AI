@@ -74,6 +74,17 @@ export default function AdminUsersPage() {
                 <td className="py-2">
                   <button
                     type="button"
+                    className="mr-2 text-violet-700 hover:underline dark:text-violet-400"
+                    onClick={async () => {
+                      const nextRole = u.role === "educator" ? "user" : "educator";
+                      await adminUpdateUser(u.id, { role: nextRole });
+                      load();
+                    }}
+                  >
+                    {u.role === "educator" ? "Снять teacher" : "Сделать teacher"}
+                  </button>
+                  <button
+                    type="button"
                     className="mr-2 text-cyan-700 hover:underline dark:text-cyan-400"
                     onClick={async () => {
                       await adminUpdateUser(u.id, { is_active: !u.is_active });

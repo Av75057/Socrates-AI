@@ -13,11 +13,12 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.services.llm.global_call import chat_completion_global_sync
+from app.services.llm.runtime import get_effective_ollama_model, get_effective_provider
 from app.db.models import Conversation, Skill, User, UserPedagogy, UserSkill
 from app.services.conversation_db import display_title_for_conversation
 
@@ -114,38 +115,25 @@ def _logical_consistency_sync(user_text: str) -> bool | None:
     s = get_settings()
     if not s.skill_update_enabled:
         return None
-    api_key = os.getenv("OPENROUTER_API_KEY", "")
-    if not api_key:
+    if get_effective_provider() == "openrouter" and not os.getenv("OPENROUTER_API_KEY", "").strip():
         return None
-    api_url = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions").rstrip("/")
-    if not api_url.endswith("/chat/completions"):
-        api_url = f"{api_url}/chat/completions"
-    model = s.logical_consistency_model
+    model = get_effective_ollama_model() if get_effective_provider() == "ollama" else s.logical_consistency_model
     system = (
         "Ответь одним словом: ДА — если в тексте ученика есть явное логическое противоречие "
         "(утверждение A и не-A в одной мысли), НЕТ — если явного противоречия нет. Только ДА или НЕТ."
     )
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_text[:4000]},
-        ],
-        "temperature": 0,
-        "max_tokens": 8,
-    }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER", "http://localhost:5173"),
-        "X-Title": os.getenv("OPENROUTER_X_TITLE", "Socrates AI"),
-    }
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_text[:4000]},
+    ]
     try:
-        with httpx.Client(timeout=20.0) as client:
-            r = client.post(api_url, json=payload, headers=headers)
-            r.raise_for_status()
-            data = r.json()
-        content = (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+        content = chat_completion_global_sync(
+            messages,
+            model=model,
+            temperature=0.0,
+            max_tokens=8,
+            timeout_s=20.0,
+        )
         low = content.strip().lower()
         if low.startswith("да"):
             return False

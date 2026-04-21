@@ -1,0 +1,23 @@
+# Пример unit для systemd (если установщик Ollama не создал сервис).
+# Сохраните как /etc/systemd/system/ollama.service, затем:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ollama
+#
+# Пользователь и путь к бинарнику проверьте: getent passwd ollama; which ollama
+
+[Unit]
+Description=Ollama Service
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/ollama serve
+User=ollama
+Group=ollama
+Restart=always
+RestartSec=3
+# HOME должен совпадать с домашним каталогом пользователя ollama (см. getent passwd ollama)
+Environment="HOME=/home/ollama"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target

@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     logical_consistency_every_n: int = 5
     # Первый вопрос тьютора при POST /users/me/conversations (LLM)
     conversation_opening_enabled: bool = True
+    # Глобальный LLM: openrouter или локальный Ollama (см. app.services.llm)
+    llm_provider: str = "openrouter"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5:7b-instruct"
+    # Публичные ссылки: базовый URL фронта (для share_url и og:url). Напр. https://app.example.com
+    public_site_url: str = ""
     # OpenRouter: ключ и опции также можно задать только через env (см. model_router.py).
 
 

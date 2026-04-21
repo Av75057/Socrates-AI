@@ -6,6 +6,24 @@ export async function fetchMemoryProfile() {
   return res.json();
 }
 
+export async function fetchMyEducators() {
+  const res = await apiFetch("/users/me/educators");
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function fetchMyAssignments() {
+  const res = await apiFetch("/users/me/assignments");
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function fetchMyAssignment(id) {
+  const res = await apiFetch(`/users/me/assignments/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function fetchMe() {
   const res = await apiFetch("/users/me");
   if (!res.ok) return null;
@@ -27,6 +45,16 @@ export async function fetchSettings() {
 export async function updateSettings(body) {
   const res = await apiFetch("/users/me/settings", {
     method: "PUT",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** Проверка GET {base}/models (OpenAI-совместимый API). */
+export async function testLlmConnection(body) {
+  const res = await apiFetch("/users/me/settings/test-llm", {
+    method: "POST",
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -56,6 +84,17 @@ export async function fetchConversation(id) {
 
 export async function deleteConversation(id) {
   const res = await apiFetch(`/users/me/conversations/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function publishConversation(id) {
+  const res = await apiFetch(`/users/me/conversations/${id}/publish`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function unpublishConversation(id) {
+  const res = await apiFetch(`/users/me/conversations/${id}/unpublish`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
 }
 

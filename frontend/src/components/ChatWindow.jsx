@@ -36,7 +36,7 @@ const ChatWindow = forwardRef(function ChatWindow(
       ref={ref}
       className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 text-sm text-slate-900 max-lg:pb-[calc(13.5rem+env(safe-area-inset-bottom))] sm:px-4 sm:py-4 sm:text-[15px] lg:pb-4 dark:text-slate-100"
     >
-      <div className="mx-auto flex max-w-3xl flex-col gap-3 pb-2">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 pb-2">
         <AnimatePresence>
           {feedback ? (
             <motion.div

@@ -373,21 +373,26 @@ export const useChatStore = create((set, get) => ({
 
   resetDontKnowCount: () => set({ dontKnowCount: 0 }),
 
-  addMessage: (role, text) =>
+  addMessage: (role, text, meta = {}) => {
+    const id =
+      meta.id ||
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `m_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    const createdAt = meta.createdAt ?? Date.now();
     set((s) => ({
       messages: [
         ...s.messages,
         {
-          id:
-            typeof crypto !== "undefined" && crypto.randomUUID
-              ? crypto.randomUUID()
-              : `m_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          id,
           role,
           text,
-          createdAt: Date.now(),
+          createdAt,
         },
       ],
-    })),
+    }));
+    return id;
+  },
 
   /** После POST /chat: привязать id сообщений из БД к последней паре user+assistant. */
   patchLastExchangeMessageIds: ({ userId, assistantId }) =>
@@ -497,5 +502,18 @@ export const useChatStore = create((set, get) => ({
         void get().refreshTutorMemoryFromServer();
       }
     }
+  },
+
+  bindConversation: (conversationId, sessionId) => {
+    localStorage.setItem("socrates_session_id", sessionId);
+    if (conversationId != null) {
+      localStorage.setItem(
+        RESUME_KEY,
+        JSON.stringify({ conversationId, sessionKey: sessionId }),
+      );
+    } else {
+      localStorage.removeItem(RESUME_KEY);
+    }
+    set({ conversationId, sessionId });
   },
 }));

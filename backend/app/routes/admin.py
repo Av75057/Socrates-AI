@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -10,8 +11,19 @@ from sqlalchemy.orm import Session
 from app.api.deps_auth import get_current_admin
 from app.db.models import Conversation, GamificationProgress, Message, User, UserSettings
 from app.db.session import get_db
+from app.config import get_settings
 from app.services.conversation_db import conversation_message_count
 from app.services.learning_service import get_user_pedagogy_public, get_user_skills_summary
+from app.services.llm.global_call import chat_completion_global_async
+from app.services.llm.runtime import (
+    get_effective_ollama_model,
+    get_effective_provider,
+    ping_ollama,
+    runtime_snapshot,
+    set_runtime_ollama_model,
+    set_runtime_provider,
+)
+from app.services.model_router import ModelRouter
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -125,7 +137,7 @@ def admin_update_user(
     if u is None:
         raise HTTPException(status_code=404, detail="User not found")
     if body.role is not None:
-        if body.role not in ("user", "admin"):
+        if body.role not in ("user", "admin", "educator"):
             raise HTTPException(status_code=400, detail="Invalid role")
         u.role = body.role
     if body.is_active is not None:
@@ -210,3 +222,63 @@ def admin_stats(_: User = Depends(get_current_admin), db: Session = Depends(get_
         "messages_total": n_msg,
         "popular_titles": [{"title": t, "count": c} for t, c in topics],
     }
+
+
+class LLMSwitchBody(BaseModel):
+    provider: str | None = None
+    ollama_model: str | None = None
+    clear_runtime: bool = False
+
+
+class LLMTestBody(BaseModel):
+    prompt: str = "Скажи коротко по-русски: привет."
+
+
+@router.get("/llm/status")
+def admin_llm_status(_: User = Depends(get_current_admin)):
+    s = get_settings()
+    snap = runtime_snapshot()
+    prov = get_effective_provider()
+    ollama_model = get_effective_ollama_model()
+    return {
+        "effective_provider": prov,
+        "provider_override": snap["provider_override"],
+        "env_llm_provider": s.llm_provider,
+        "ollama_base_url": s.ollama_base_url,
+        "ollama_model": ollama_model,
+        "ollama_model_override": snap["ollama_model_override"],
+        "ollama_reachable": ping_ollama(),
+        "openrouter_configured": bool(os.getenv("OPENROUTER_API_KEY", "").strip()),
+    }
+
+
+@router.post("/llm/switch")
+def admin_llm_switch(body: LLMSwitchBody, _: User = Depends(get_current_admin)):
+    if body.clear_runtime:
+        set_runtime_provider(None)
+        set_runtime_ollama_model(None)
+    else:
+        if not (body.provider or "").strip():
+            raise HTTPException(status_code=400, detail="provider is required unless clear_runtime=true")
+        try:
+            set_runtime_provider(body.provider)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        if "ollama_model" in body.model_fields_set:
+            set_runtime_ollama_model(body.ollama_model)
+    return {
+        "ok": True,
+        "effective_provider": get_effective_provider(),
+        "ollama_model": get_effective_ollama_model(),
+    }
+
+
+@router.post("/llm/test")
+async def admin_llm_test(body: LLMTestBody, _: User = Depends(get_current_admin)):
+    mr = ModelRouter()
+    model = mr.select_model("question")
+    messages = [{"role": "user", "content": body.prompt}]
+    reply = await chat_completion_global_async(
+        messages, model=model, temperature=0.5, max_tokens=256
+    )
+    return {"reply": reply, "model": model, "effective_provider": get_effective_provider()}

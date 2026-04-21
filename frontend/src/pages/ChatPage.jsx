@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import ChatWindow from "../components/ChatWindow.jsx";
 import InputBox from "../components/InputBox.jsx";
 import ModeIndicator from "../components/ModeIndicator.jsx";
@@ -27,9 +27,11 @@ import {
   createConversation,
   deleteMessage,
   fetchConversation,
+  fetchMyAssignment,
   fetchMemoryProfile,
   fetchSettings,
   getRecommendation,
+  listConversations,
   updateMessage,
 } from "../api/userApi.js";
 import ResumeLearningWidget from "../components/learning/ResumeLearningWidget.jsx";
@@ -43,7 +45,8 @@ import SkillTree from "../components/SkillTree.jsx";
 import ThinkingPanel from "../components/ThinkingPanel.jsx";
 import WisdomPointsBadge from "../components/gamification/WisdomPointsBadge.jsx";
 import AchievementsModal from "../components/gamification/AchievementsModal.jsx";
-import DailyChallengeWidget from "../components/gamification/DailyChallengeWidget.jsx";
+import DailyChallengeCompact from "../components/gamification/DailyChallengeCompact.jsx";
+import DailyChallengeModal from "../components/gamification/DailyChallengeModal.jsx";
 import GamificationToastHost from "../components/gamification/GamificationToastHost.jsx";
 import {
   fetchAchievementsCatalog,
@@ -58,10 +61,10 @@ import TutorModeSelector from "../components/pedagogy/TutorModeSelector.jsx";
 import DifficultyIndicator from "../components/pedagogy/DifficultyIndicator.jsx";
 import FallacyNotification from "../components/pedagogy/FallacyNotification.jsx";
 import HintButton from "../components/pedagogy/HintButton.jsx";
-import { buildConnectionErrorHint } from "../utils/connectionErrorHint.js";
 import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxMetrics.js";
 import { parseDbMessageId } from "../utils/messageId.js";
 import OnboardingTour from "../components/OnboardingTour.jsx";
+import ConversationList from "../components/chat/ConversationList.jsx";
 
 function messagesFromNewConversation(c) {
   const t = (c.opening_message || "").trim();
@@ -79,7 +82,14 @@ function messagesFromNewConversation(c) {
   ];
 }
 
-async function postChat(sessionId, message, action, conversationId) {
+async function postChat(
+  sessionId,
+  message,
+  action,
+  conversationId,
+  clientMessageId = null,
+  assignmentId = null,
+) {
   const payload = {
     session_id: sessionId,
     message,
@@ -87,6 +97,8 @@ async function postChat(sessionId, message, action, conversationId) {
     memory_user_id: getMemoryUserId(),
   };
   if (conversationId != null) payload.conversation_id = conversationId;
+  if (clientMessageId) payload.client_message_id = clientMessageId;
+  if (assignmentId != null) payload.assignment_id = assignmentId;
   const res = await apiFetch("/chat", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -98,6 +110,78 @@ async function postChat(sessionId, message, action, conversationId) {
   return res.json();
 }
 
+const OFFLINE_QUEUE_KEY = "socrates_pending_chat_v1";
+
+function readPendingTurns() {
+  try {
+    const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingTurns(items) {
+  try {
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(items));
+  } catch {
+    /* ignore */
+  }
+}
+
+function enqueuePendingTurn(item) {
+  const next = [...readPendingTurns(), item];
+  writePendingTurns(next);
+  return next;
+}
+
+function removePendingTurn(clientMessageId) {
+  const next = readPendingTurns().filter((item) => item.clientMessageId !== clientMessageId);
+  writePendingTurns(next);
+  return next;
+}
+
+function pendingTurnsForSession(sessionId) {
+  return readPendingTurns().filter((item) => item.sessionId === sessionId);
+}
+
+function createClientMessageId() {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `turn_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+function buildUserBubbleText(trimmed, action) {
+  if (action === "none" && trimmed) return trimmed;
+  if (action === "hint") return trimmed || "Дай подсказку";
+  if (action === "give_up") return "Объясни нормально";
+  return trimmed;
+}
+
+function normalizeConversationMessages(detail) {
+  return (detail.messages || []).map((m) => ({
+    id: `db-${m.id}`,
+    role: m.role === "tutor" ? "assistant" : "user",
+    text: m.content,
+    createdAt: m.created_at ? new Date(m.created_at).getTime() : Date.now(),
+  }));
+}
+
+function SaveStatusBadge({ status }) {
+  if (!status) return null;
+  const tone =
+    status.kind === "saved"
+      ? "border-emerald-300/70 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-950/30 dark:text-emerald-200"
+      : status.kind === "queued"
+        ? "border-amber-300/70 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-200"
+        : status.kind === "saving"
+          ? "border-cyan-300/70 bg-cyan-50 text-cyan-900 dark:border-cyan-500/30 dark:bg-cyan-950/30 dark:text-cyan-200"
+          : "border-rose-300/70 bg-rose-50 text-rose-900 dark:border-rose-500/30 dark:bg-rose-950/30 dark:text-rose-200";
+  return <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${tone}`}>{status.text}</span>;
+}
+
 function deriveAvatarMood({ microFeedback, feedback, simplerBanner }) {
   if (simplerBanner) return "doubt";
   if (microFeedback === "short") return "doubt";
@@ -107,8 +191,10 @@ function deriveAvatarMood({ microFeedback, feedback, simplerBanner }) {
 }
 
 export default function ChatPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user: authUser } = useAuth();
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const bindConversation = useChatStore((s) => s.bindConversation);
   const conversationId = useChatStore((s) => s.conversationId);
   const messages = useChatStore((s) => s.messages);
   const mode = useChatStore((s) => s.mode);
@@ -157,7 +243,16 @@ export default function ChatPage() {
   const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [pedagogyIntro, setPedagogyIntro] = useState(false);
   const [accountSettings, setAccountSettings] = useState(null);
+  const [dailyModalOpen, setDailyModalOpen] = useState(false);
+  const [conversationItems, setConversationItems] = useState([]);
+  const [conversationListLoading, setConversationListLoading] = useState(false);
+  const [assignmentBanner, setAssignmentBanner] = useState(null);
+  const [saveStatus, setSaveStatus] = useState(() => {
+    const pending = pendingTurnsForSession(useChatStore.getState().sessionId).length;
+    return pending > 0 ? { kind: "queued", text: `Локально сохранено: ${pending}` } : null;
+  });
   const chatScrollRef = useRef(null);
+  const syncQueueRef = useRef(false);
 
   const lastActivityRef = useRef(Date.now());
 
@@ -385,34 +480,20 @@ export default function ChatPage() {
     };
   }, [conversationId, sessionId, authUser?.id]);
 
-  /** После F5: подтянуть сообщения диалога, если в сторе уже есть conversationId. */
+  /** После F5 или по ?conversation=: подтянуть сообщения выбранного диалога. */
   useEffect(() => {
-    if (!authUser || !conversationId) return;
+    if (!authUser) return;
     if (useChatStore.getState().messages.length > 0) return;
+    const urlConversationId = Number(searchParams.get("conversation"));
+    const targetId =
+      Number.isFinite(urlConversationId) && urlConversationId > 0 ? urlConversationId : conversationId;
+    if (!targetId) return;
     let cancelled = false;
     (async () => {
       try {
-        const detail = await fetchConversation(conversationId);
+        const detail = await fetchConversation(targetId);
         if (cancelled) return;
-        const sk = detail.session_key;
-        if (useChatStore.getState().sessionId !== sk) {
-          localStorage.setItem("socrates_session_id", sk);
-          localStorage.setItem(
-            "socrates_chat_resume",
-            JSON.stringify({ conversationId, sessionKey: sk }),
-          );
-        }
-        const initial = (detail.messages || []).map((m) => ({
-          id: `db-${m.id}`,
-          role: m.role === "tutor" ? "assistant" : "user",
-          text: m.content,
-          createdAt: m.created_at ? new Date(m.created_at).getTime() : Date.now(),
-        }));
-        useChatStore.setState({
-          sessionId: sk,
-          messages: initial,
-          topic: (detail.title || "").trim() || useChatStore.getState().topic,
-        });
+        setActiveConversation(detail.id, detail.session_key, normalizeConversationMessages(detail));
       } catch {
         useChatStore.getState().clearResume();
       }
@@ -420,13 +501,82 @@ export default function ChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [authUser, conversationId]);
+  }, [authUser, conversationId, searchParams, setActiveConversation]);
 
   useEffect(() => {
     if (!skillToast) return undefined;
     const t = setTimeout(() => setSkillToast(null), 5200);
     return () => clearTimeout(t);
   }, [skillToast]);
+
+  useEffect(() => {
+    const pending = pendingTurnsForSession(sessionId).length;
+    if (pending > 0) {
+      setSaveStatus({ kind: "queued", text: `Локально сохранено: ${pending}` });
+    } else if (saveStatus?.kind === "queued") {
+      setSaveStatus(null);
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!authUser) {
+      setConversationItems([]);
+      return;
+    }
+    let cancelled = false;
+    setConversationListLoading(true);
+    listConversations(0, 12)
+      .then((rows) => {
+        if (!cancelled) setConversationItems(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setConversationItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setConversationListLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.id, conversationId, messages.length]);
+
+  useEffect(() => {
+    const urlConversationId = Number(searchParams.get("conversation"));
+    if (conversationId != null) {
+      if (urlConversationId !== conversationId) {
+        const next = new URLSearchParams(searchParams);
+        next.set("conversation", String(conversationId));
+        setSearchParams(next, { replace: true });
+      }
+      return;
+    }
+    if (!Number.isFinite(urlConversationId) || urlConversationId <= 0) {
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("conversation");
+    setSearchParams(next, { replace: true });
+  }, [conversationId, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const assignmentId = Number(searchParams.get("assignment"));
+    if (!authUser || !Number.isFinite(assignmentId) || assignmentId <= 0) {
+      setAssignmentBanner(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const assignment = await fetchMyAssignment(assignmentId);
+        if (!cancelled) setAssignmentBanner(assignment);
+      } catch {
+        if (!cancelled) setAssignmentBanner(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser, searchParams]);
 
   const refreshRecommendation = useCallback(async () => {
     if (!authUser) return;
@@ -438,36 +588,45 @@ export default function ChatPage() {
     }
   }, [authUser]);
 
-  const run = useCallback(
-    async (message, action = "none") => {
-      if (!canSend()) return;
-      markSent();
-      bumpActivity();
-
-      const trimmed = message.trim();
-      if (action === "none" && trimmed) {
-        addMessage("user", trimmed);
-      } else if (action === "hint") {
-        addMessage("user", trimmed || "Дай подсказку");
-        resetDontKnowCount();
-        setSimplerBanner(false);
-      } else if (action === "give_up") {
-        addMessage("user", "Объясни нормально");
-        resetDontKnowCount();
-        setSimplerBanner(false);
-      }
-
+  const openConversationById = useCallback(
+    async (id) => {
+      const detail = await fetchConversation(id);
       setFeedback(null);
       setMicroFeedback(null);
-      setLoading(true);
+      setSimplerBanner(false);
+      setIdleHint(false);
+      setFallacyNotice(null);
+      resetProfileClock();
+      setActiveConversation(detail.id, detail.session_key, normalizeConversationMessages(detail));
+    },
+    [setActiveConversation],
+  );
+
+  const executeTurn = useCallback(
+    async (turn, { fromQueue = false } = {}) => {
+      const trimmed = (turn.message || "").trim();
+      const effectiveSessionId = turn.sessionId || useChatStore.getState().sessionId;
+      const effectiveConversationId =
+        turn.conversationId ?? useChatStore.getState().conversationId;
       const attemptsBefore = useChatStore.getState().attempts;
+
+      setLoading(true);
+      setSaveStatus({
+        kind: "saving",
+        text: fromQueue ? "Синхронизирую…" : "Сохраняю…",
+      });
       try {
         const data = await postChat(
-          sessionId,
+          effectiveSessionId,
           trimmed,
-          action,
-          useChatStore.getState().conversationId,
+          turn.action,
+          effectiveConversationId,
+          turn.clientMessageId,
+          turn.assignmentId,
         );
+        if (data.conversation_id != null && data.session_key) {
+          bindConversation(data.conversation_id, data.session_key);
+        }
         addMessage("assistant", data.reply);
         setFromServer(data);
         if (
@@ -479,6 +638,7 @@ export default function ChatPage() {
             assistantId: data.persisted_assistant_message_id,
           });
         }
+        removePendingTurn(turn.clientMessageId);
 
         if (data.pedagogy) {
           setTutorMode(data.pedagogy.mode || "friendly");
@@ -490,25 +650,25 @@ export default function ChatPage() {
           }
         }
 
-        recordTurnOutcome({ userText: trimmed, action });
+        recordTurnOutcome({ userText: trimmed, action: turn.action });
 
         const dk = useChatStore.getState().dontKnowCount;
         if (dk >= 3) setSimplerBanner(true);
 
         const veryClose = shouldShowVeryClose({
-          action,
+          action: turn.action,
           attempts: data.attempts,
           mode: data.mode,
         });
         const almost = shouldShowAlmostUnderstood({
-          action,
+          action: turn.action,
           userText: trimmed,
           attempts: data.attempts,
           frustration: data.frustration,
           mode: data.mode,
         });
         const goodAttemptBanner =
-          action === "none" &&
+          turn.action === "none" &&
           trimmed &&
           (data.frustration_level ?? 0) >= 1 &&
           trimmed.length < 28;
@@ -521,10 +681,10 @@ export default function ChatPage() {
           setFeedback("Хорошая попытка. Давай докрутим 👇");
         }
 
-        if (action === "none" && trimmed) {
+        if (turn.action === "none" && trimmed) {
           const skipShortMicro = veryClose || almost || goodAttemptBanner;
-          if (!skipShortMicro && isShortAnswer(trimmed, action)) setMicroFeedback("short");
-          else if (isStrongAnswer(trimmed, action)) setMicroFeedback("good");
+          if (!skipShortMicro && isShortAnswer(trimmed, turn.action)) setMicroFeedback("short");
+          else if (isStrongAnswer(trimmed, turn.action)) setMicroFeedback("good");
         }
 
         setXpToast(true);
@@ -541,13 +701,11 @@ export default function ChatPage() {
           setSkillToast(`Новая тема открыта: «${t.title}» 🔓`);
         }
 
-        const msgForGame =
-          trimmed ||
-          (action === "hint" ? "Дай подсказку" : action === "give_up" ? "Объясни нормально" : "");
-        if (msgForGame || action !== "none") {
-          const gam = await postGamificationAction(sessionId, "user_response", {
+        const msgForGame = buildUserBubbleText(trimmed, turn.action);
+        if (msgForGame || turn.action !== "none") {
+          const gam = await postGamificationAction(effectiveSessionId, "user_response", {
             user_message: msgForGame,
-            action,
+            action: turn.action,
             attempts_before: attemptsBefore,
           });
           if (gam?.progress) {
@@ -561,35 +719,114 @@ export default function ChatPage() {
             }
           }
         }
-        const dc = authUser ? await fetchDailyChallengeMe() : await fetchDailyChallenge(sessionId);
-        if (dc) setDailyCh(dc);
 
+        const dc = authUser ? await fetchDailyChallengeMe() : await fetchDailyChallenge(effectiveSessionId);
+        if (dc) setDailyCh(dc);
         if (authUser) void refreshRecommendation();
+
+        const pendingLeft = pendingTurnsForSession(effectiveSessionId).length;
+        setSaveStatus(
+          pendingLeft > 0
+            ? { kind: "queued", text: `Локально сохранено: ${pendingLeft}` }
+            : { kind: "saved", text: "Сохранено" },
+        );
+        return data;
       } catch (e) {
-        const msg =
-          e instanceof TypeError
-            ? `Не удаётся связаться с сервером. ${buildConnectionErrorHint()}`
-            : e.message;
-        addMessage("assistant", `Ошибка: ${msg}`);
+        if (e instanceof TypeError) {
+          if (!fromQueue) {
+            enqueuePendingTurn({
+              ...turn,
+              conversationId: effectiveConversationId,
+              sessionId: effectiveSessionId,
+              assignmentId: turn.assignmentId ?? null,
+            });
+            setSaveStatus({
+              kind: "queued",
+              text: `Локально сохранено: ${pendingTurnsForSession(effectiveSessionId).length}`,
+            });
+            return null;
+          }
+          setSaveStatus({
+            kind: "queued",
+            text: `Жду сеть. В очереди: ${pendingTurnsForSession(effectiveSessionId).length}`,
+          });
+          return null;
+        }
+        const msg = e instanceof Error ? e.message : "Ошибка сервера";
+        if (!fromQueue) {
+          addMessage("assistant", `Ошибка: ${msg}`);
+        }
+        setSaveStatus({ kind: "error", text: "Не сохранено" });
+        return null;
       } finally {
         setLoading(false);
       }
     },
     [
       addMessage,
-      bumpActivity,
-      canSend,
-      markSent,
+      authUser,
+      bindConversation,
+      patchLastExchangeMessageIds,
+      pushGamToast,
       recordTurnOutcome,
-      resetDontKnowCount,
-      sessionId,
+      refreshRecommendation,
       setFromServer,
       setLoading,
-      pushGamToast,
-      authUser,
-      refreshRecommendation,
-      patchLastExchangeMessageIds,
     ],
+  );
+
+  const flushPendingTurns = useCallback(async () => {
+    if (syncQueueRef.current) return;
+    if (!navigator.onLine) return;
+    const currentSessionId = useChatStore.getState().sessionId;
+    const queue = pendingTurnsForSession(currentSessionId);
+    if (queue.length === 0) return;
+    syncQueueRef.current = true;
+    try {
+      for (const item of queue) {
+        const ok = await executeTurn(item, { fromQueue: true });
+        if (!ok) break;
+      }
+    } finally {
+      syncQueueRef.current = false;
+      const pendingLeft = pendingTurnsForSession(useChatStore.getState().sessionId).length;
+      if (pendingLeft > 0) {
+        setSaveStatus({ kind: "queued", text: `Локально сохранено: ${pendingLeft}` });
+      }
+    }
+  }, [executeTurn]);
+
+  const run = useCallback(
+    async (message, action = "none") => {
+      if (!canSend()) return;
+      markSent();
+      bumpActivity();
+
+      const trimmed = message.trim();
+      const userText = buildUserBubbleText(trimmed, action);
+      const clientMessageId = createClientMessageId();
+
+      if (userText) {
+        addMessage("user", userText, { id: `local-${clientMessageId}` });
+      }
+      if (action !== "none") {
+        resetDontKnowCount();
+        setSimplerBanner(false);
+      }
+
+      setFeedback(null);
+      setMicroFeedback(null);
+
+      await executeTurn({
+        message: trimmed,
+        action,
+        clientMessageId,
+        sessionId: useChatStore.getState().sessionId,
+        conversationId: useChatStore.getState().conversationId,
+        assignmentId: Number(searchParams.get("assignment")) || null,
+      });
+    },
+    [addMessage, bumpActivity, canSend, executeTurn, markSent, resetDontKnowCount, searchParams],
   );
 
   const onSend = (text) => run(text, "none");
@@ -606,8 +843,25 @@ export default function ChatPage() {
     run("", "give_up");
   };
 
+  useEffect(() => {
+    void flushPendingTurns();
+  }, [flushPendingTurns, sessionId]);
+
+  useEffect(() => {
+    const onOnline = () => {
+      void flushPendingTurns();
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [flushPendingTurns]);
+
   const onNewSession = () => {
     if (confirm("Начать новую сессию? Прогресс этой темы сбросится.")) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("conversation");
+        return next;
+      });
       setFeedback(null);
       setMicroFeedback(null);
       setSimplerBanner(false);
@@ -623,6 +877,11 @@ export default function ChatPage() {
   const onNewAccountDialog = async () => {
     if (!authUser) return;
     try {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("conversation");
+        return next;
+      });
       const c = await createConversation();
       setFeedback(null);
       setMicroFeedback(null);
@@ -647,29 +906,21 @@ export default function ChatPage() {
     const last = recommendation?.last_conversation;
     if (!last?.id) return;
     try {
-      const detail = await fetchConversation(last.id);
-      const initial = (detail.messages || []).map((m) => ({
-        id: `db-${m.id}`,
-        role: m.role === "tutor" ? "assistant" : "user",
-        text: m.content,
-        createdAt: m.created_at ? new Date(m.created_at).getTime() : Date.now(),
-      }));
-      setFeedback(null);
-      setMicroFeedback(null);
-      setSimplerBanner(false);
-      setIdleHint(false);
-      setFallacyNotice(null);
-      resetProfileClock();
-      setActiveConversation(detail.id, detail.session_key, initial);
+      await openConversationById(last.id);
       await refreshRecommendation();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Не удалось открыть диалог");
     }
-  }, [recommendation, refreshRecommendation, setActiveConversation]);
+  }, [openConversationById, recommendation, refreshRecommendation]);
 
   const onNewRecommendedDialog = useCallback(async () => {
     const title = (recommendation?.recommended_topic || "").trim() || "Новая тема";
     try {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("conversation");
+        return next;
+      });
       const c = await createConversation(title);
       setFeedback(null);
       setMicroFeedback(null);
@@ -683,7 +934,7 @@ export default function ChatPage() {
     } catch (e) {
       alert(e instanceof Error ? e.message : "Не удалось создать диалог");
     }
-  }, [recommendation, refreshRecommendation, setActiveConversation]);
+  }, [recommendation, refreshRecommendation, setActiveConversation, setSearchParams]);
 
   const dismissPedagogyIntro = useCallback(() => {
     localStorage.setItem("socrates_pedagogy_intro_v1", "1");
@@ -763,6 +1014,20 @@ export default function ChatPage() {
         onNewSession={onNewSession}
         xp={xp}
         streak={streak}
+        statusSlot={<SaveStatusBadge status={saveStatus} />}
+        dailyChallengeHeaderSlot={
+          gamificationLoaded && dailyCh?.challenge_text ? (
+            <button
+              type="button"
+              onClick={() => setDailyModalOpen(true)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-violet-400/50 bg-violet-50 text-lg lg:hidden dark:border-violet-600/50 dark:bg-violet-950/50"
+              aria-label="Вызов дня"
+              title="Вызов дня"
+            >
+              <span aria-hidden>🎯</span>
+            </button>
+          ) : null
+        }
         pedagogySlot={<PedagogyStatus />}
         wisdomSlot={
           <div data-tour="wisdom">
@@ -796,6 +1061,25 @@ export default function ChatPage() {
           >
             Понятно
           </button>
+        </div>
+      ) : null}
+      {assignmentBanner ? (
+        <div className="mx-4 mt-2 rounded-xl border border-violet-400/40 bg-violet-50/90 px-4 py-3 text-sm text-violet-950 dark:border-violet-700/50 dark:bg-violet-950/30 dark:text-violet-100">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-medium">{assignmentBanner.title}</p>
+              <p className="mt-1 text-violet-900/80 dark:text-violet-100/80">{assignmentBanner.prompt}</p>
+            </div>
+            {messages.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => run(assignmentBanner.prompt, "none")}
+                className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500"
+              >
+                Начать задание
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
       {authUser ? (
@@ -837,15 +1121,10 @@ export default function ChatPage() {
           )}
         </div>
       ) : null}
-      <DailyChallengeWidget
-        text={dailyCh?.challenge_text}
-        completed={!!dailyCh?.completed}
-        loading={!gamificationLoaded}
-      />
       <FallacyNotification fallacy={fallacyNotice} onDismiss={() => setFallacyNotice(null)} />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-[7_1_0%]">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:min-w-[400px]">
           <ModeIndicator mode={mode} attempts={attempts} frustration={frustration} />
           <UserStateBadge type={userType} />
           <UserMemoryPanel memory={memory} className="mx-4 mt-0 lg:hidden" />
@@ -858,6 +1137,7 @@ export default function ChatPage() {
             loading={loading}
             onExampleHint={onRequestExample}
             onExplain={onGiveUp}
+            conversationKey={conversationId != null ? `conversation_${conversationId}` : `session_${sessionId}`}
           />
           <ChatWindow
             ref={chatScrollRef}
@@ -919,8 +1199,38 @@ export default function ChatPage() {
           progressPulseKey={attempts}
           accountGamification={!!getToken()}
           gamificationPublic={gamificationPublic}
+          conversationListSlot={
+            authUser ? (
+              <ConversationList
+                items={conversationItems}
+                activeId={conversationId}
+                loading={conversationListLoading}
+                onSelect={(id) => {
+                  const next = new URLSearchParams(searchParams);
+                  next.set("conversation", String(id));
+                  setSearchParams(next);
+                  void openConversationById(id);
+                }}
+              />
+            ) : null
+          }
+          dailyChallengeSlot={
+            <DailyChallengeCompact
+              text={dailyCh?.challenge_text}
+              completed={!!dailyCh?.completed}
+              loading={!gamificationLoaded}
+              onOpenDetails={() => setDailyModalOpen(true)}
+            />
+          }
         />
       </div>
+      <DailyChallengeModal
+        open={dailyModalOpen}
+        onClose={() => setDailyModalOpen(false)}
+        text={dailyCh?.challenge_text}
+        completed={!!dailyCh?.completed}
+        loading={!gamificationLoaded}
+      />
       <OnboardingTour
         enabled={!!authUser && !!accountSettings && accountSettings.has_seen_onboarding === false}
         onFinished={() =>

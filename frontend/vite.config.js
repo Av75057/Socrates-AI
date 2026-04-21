@@ -14,8 +14,10 @@ export default defineConfig({
   appType: "spa",
   plugins: [react()],
   server: {
-    /** Слушать все интерфейсы — LAN и проброс с роутера на этот ПК */
-    host: true,
+    /**
+     * 0.0.0.0 — доступ по LAN (не используйте CLI `--host 127.0.0.1`, иначе с других устройств не откроется).
+     */
+    host: "0.0.0.0",
     port: 5173,
     /**
      * Иначе Vite отвечает 403 для Host = домен/DDNS/вход с интернета по имени, не по IP.
@@ -26,7 +28,7 @@ export default defineConfig({
   },
   /** `vite preview` — тот же прокси, что и в dev, иначе fetch('/api/chat') падает с NetworkError */
   preview: {
-    host: true,
+    host: "0.0.0.0",
     port: 4173,
     allowedHosts: true,
     proxy: apiProxy,

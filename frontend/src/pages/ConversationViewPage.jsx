@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { fetchConversation } from "../api/userApi.js";
+import { fetchConversation, publishConversation, unpublishConversation } from "../api/userApi.js";
 import { useChatStore } from "../store/useChatStore.js";
 
 export default function ConversationViewPage() {
@@ -9,6 +9,7 @@ export default function ConversationViewPage() {
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [pubBusy, setPubBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,13 +63,73 @@ export default function ConversationViewPage() {
         </Link>
       </nav>
       <h1 className="font-display text-xl font-bold text-slate-900 dark:text-white">{data.title}</h1>
-      <button
-        type="button"
-        onClick={continueChat}
-        className="mt-4 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500"
-      >
-        Продолжить в чате
-      </button>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={continueChat}
+          className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500"
+        >
+          Продолжить в чате
+        </button>
+        {data.public_slug ? (
+          <>
+            <button
+              type="button"
+              disabled={pubBusy}
+              className="rounded-lg border border-amber-500/50 px-3 py-2 text-sm text-amber-900 dark:text-amber-200"
+              onClick={async () => {
+                const url = `${window.location.origin}/share/${data.public_slug}`;
+                try {
+                  await navigator.clipboard.writeText(url);
+                } catch {
+                  prompt("Ссылка:", url);
+                }
+              }}
+            >
+              Копировать публичную ссылку
+            </button>
+            <button
+              type="button"
+              disabled={pubBusy}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600"
+              onClick={async () => {
+                setPubBusy(true);
+                try {
+                  await unpublishConversation(data.id);
+                  const d = await fetchConversation(data.id);
+                  setData(d);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Ошибка");
+                } finally {
+                  setPubBusy(false);
+                }
+              }}
+            >
+              Снять с публикации
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            disabled={pubBusy}
+            className="rounded-lg border border-cyan-500/60 px-3 py-2 text-sm text-cyan-800 dark:text-cyan-200"
+            onClick={async () => {
+              setPubBusy(true);
+              try {
+                await publishConversation(data.id);
+                const d = await fetchConversation(data.id);
+                setData(d);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Ошибка");
+              } finally {
+                setPubBusy(false);
+              }
+            }}
+          >
+            Опубликовать (ссылка для друзей)
+          </button>
+        )}
+      </div>
       <div className="mt-8 max-w-3xl space-y-4">
         {data.messages.map((m) => (
           <div

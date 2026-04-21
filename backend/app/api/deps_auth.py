@@ -40,3 +40,9 @@ def get_current_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     return user
+
+
+def get_current_educator(user: Annotated[User, Depends(get_current_user)]) -> User:
+    if user.role not in ("educator", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Educator only")
+    return user

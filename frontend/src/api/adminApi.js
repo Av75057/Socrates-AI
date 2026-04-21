@@ -39,3 +39,27 @@ export async function adminStats() {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+export async function adminLLMStatus() {
+  const res = await apiFetch("/admin/llm/status");
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function adminLLMSwitch(body) {
+  const res = await apiFetch("/admin/llm/switch", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function adminLLMTest(prompt) {
+  const res = await apiFetch("/admin/llm/test", {
+    method: "POST",
+    body: JSON.stringify({ prompt }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}

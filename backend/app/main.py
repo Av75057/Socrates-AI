@@ -16,7 +16,7 @@ from slowapi import _rate_limit_exceeded_handler
 
 from app.config import get_settings
 from app.limiter_instance import limiter
-from app.routes import admin, auth, chat, gamification, pedagogy, users
+from app.routes import admin, auth, chat, educator, gamification, pedagogy, public_sharing, users
 
 log = logging.getLogger(__name__)
 
@@ -46,10 +46,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 settings = get_settings()
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-# Dev: фронт с телефона/другого ПК по LAN (:5173 / :4173) при прямом запросе к API (VITE_API_URL).
+# Dev: фронт с телефона/другого ПК по LAN (Vite на :5173+ или preview :4173+; Tailscale 100.x).
 _lan_dev_regex = (
     r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
-    r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):(5173|4173)$"
+    r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|100\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+    r":(5173|5174|5175|5176|4173|4174|4175)$"
 )
 app.add_middleware(
     CORSMiddleware,
@@ -61,8 +62,10 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(public_sharing.router)
 app.include_router(users.router)
 app.include_router(admin.router)
+app.include_router(educator.router)
 app.include_router(chat.router, tags=["chat"])
 app.include_router(gamification.router, prefix="/gamification", tags=["gamification"])
 app.include_router(pedagogy.router, prefix="/pedagogy", tags=["pedagogy"])

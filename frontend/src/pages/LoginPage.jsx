@@ -16,24 +16,32 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
+    if (submitting) return;
     setError("");
+    setSubmitting(true);
     try {
       const data = await login(email.trim(), password);
       const isAdmin = String(data?.user?.role || "").toLowerCase() === "admin";
+      const isEducator = ["educator", "admin"].includes(String(data?.user?.role || "").toLowerCase());
       const adminDest =
         typeof from === "string" && from.startsWith("/admin")
           ? from
           : "/admin";
       if (isAdmin) {
         navigate(adminDest, { replace: true });
+      } else if (isEducator && (from === "/app" || from === "/")) {
+        navigate("/educator", { replace: true });
       } else {
         navigate(from, { replace: true });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка входа");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -61,7 +69,6 @@ export default function LoginPage() {
           <input
             type="password"
             required
-            minLength={6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
@@ -69,9 +76,10 @@ export default function LoginPage() {
         </div>
         <button
           type="submit"
-          className="w-full rounded-lg bg-cyan-600 py-2.5 font-medium text-white hover:bg-cyan-500"
+          disabled={submitting}
+          className="w-full rounded-lg bg-cyan-600 py-2.5 font-medium text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Войти
+          {submitting ? "Входим…" : "Войти"}
         </button>
       </form>
       <p className="mt-6 text-sm text-slate-600 dark:text-slate-400">

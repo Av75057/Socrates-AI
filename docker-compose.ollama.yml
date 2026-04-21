@@ -1,0 +1,26 @@
+# Compose v2: ключ version не обязателен (см. также docker-compose.yml в корне).
+# Отдельный compose только для Ollama (GPU + персистентный том).
+# Запуск: docker compose -f docker-compose.ollama.yml up -d
+# Модель после старта: docker exec -it socrates-ollama ollama pull qwen2.5:7b-instruct
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: socrates-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

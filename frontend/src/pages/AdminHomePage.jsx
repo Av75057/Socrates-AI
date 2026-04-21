@@ -31,6 +31,17 @@ export default function AdminHomePage() {
             </span>
           </Link>
         </li>
+        <li>
+          <Link
+            to="/admin/llm"
+            className="block rounded-xl border border-violet-500/45 bg-violet-50 px-6 py-5 font-medium text-violet-950 transition hover:border-violet-600 dark:border-violet-700/40 dark:bg-violet-950/25 dark:text-violet-100 dark:hover:border-violet-500/50"
+          >
+            LLM (Ollama / OpenRouter)
+            <span className="mt-1 block text-xs font-normal text-violet-800 dark:text-violet-200/70">
+              Провайдер, тест, модель
+            </span>
+          </Link>
+        </li>
       </ul>
       <p className="mt-10 text-sm">
         <Link to="/app" className="text-slate-600 underline hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-300">

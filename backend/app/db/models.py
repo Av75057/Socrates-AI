@@ -29,6 +29,7 @@ JSONType = JSON
 class UserRole(str, enum.Enum):
     user = "user"
     admin = "admin"
+    educator = "educator"
 
 
 class MessageRole(str, enum.Enum):
@@ -60,6 +61,23 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    public_shares: Mapped[list["PublicConversation"]] = relationship(
+        "PublicConversation",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    educator_classes: Mapped[list["Classroom"]] = relationship(
+        "Classroom",
+        back_populates="educator",
+        cascade="all, delete-orphan",
+        foreign_keys="Classroom.educator_id",
+    )
+    student_class_links: Mapped[list["ClassStudent"]] = relationship(
+        "ClassStudent",
+        back_populates="student",
+        cascade="all, delete-orphan",
+        foreign_keys="ClassStudent.student_id",
+    )
     gamification: Mapped[GamificationProgress | None] = relationship(
         back_populates="user",
         uselist=False,
@@ -89,6 +107,10 @@ class UserSettings(Base):
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     has_seen_onboarding: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     show_typing_indicator: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Локальная / кастомная LLM (OpenAI-совместимый /v1/chat/completions). Пусто = OpenRouter из .env.
+    llm_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    llm_api_key: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    llm_model_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="settings")
 
@@ -100,6 +122,11 @@ class Conversation(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(512), default="Новый диалог", nullable=False)
     session_key: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
+    assignment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assignments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -118,10 +145,123 @@ class Conversation(Base):
         cascade="all, delete-orphan",
         order_by="Message.created_at",
     )
+    public_share: Mapped["PublicConversation | None"] = relationship(
+        "PublicConversation",
+        back_populates="conversation",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    assignment: Mapped["Assignment | None"] = relationship("Assignment", back_populates="conversations")
+
+
+class Classroom(Base):
+    __tablename__ = "classes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    educator_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    educator: Mapped["User"] = relationship(
+        "User",
+        back_populates="educator_classes",
+        foreign_keys=[educator_id],
+    )
+    students: Mapped[list["ClassStudent"]] = relationship(
+        "ClassStudent",
+        back_populates="classroom",
+        cascade="all, delete-orphan",
+    )
+    assignments: Mapped[list["Assignment"]] = relationship(
+        "Assignment",
+        back_populates="classroom",
+        cascade="all, delete-orphan",
+    )
+
+
+class ClassStudent(Base):
+    __tablename__ = "class_students"
+
+    class_id: Mapped[int] = mapped_column(
+        ForeignKey("classes.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    student_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    classroom: Mapped["Classroom"] = relationship("Classroom", back_populates="students")
+    student: Mapped["User"] = relationship(
+        "User",
+        back_populates="student_class_links",
+        foreign_keys=[student_id],
+    )
+
+
+class Assignment(Base):
+    __tablename__ = "assignments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey("classes.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    classroom: Mapped["Classroom"] = relationship("Classroom", back_populates="assignments")
+    conversations: Mapped[list["Conversation"]] = relationship("Conversation", back_populates="assignment")
+
+
+class PublicConversation(Base):
+    """Публичная анонимная ссылка на диалог (одна активная запись на conversation)."""
+
+    __tablename__ = "public_conversations"
+
+    slug: Mapped[str] = mapped_column(String(16), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    views: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="public_shares")
+    conversation: Mapped["Conversation"] = relationship(back_populates="public_share")
 
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id",
+            "client_message_id",
+            name="uq_messages_conversation_client_message_id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     conversation_id: Mapped[int] = mapped_column(
@@ -131,6 +271,7 @@ class Message(Base):
     )
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    client_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     fallacy_detected: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

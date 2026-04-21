@@ -1,7 +1,112 @@
 import { useState } from "react";
+import {
+  BookOpen,
+  ClipboardList,
+  GraduationCap,
+  HelpCircle,
+  Lightbulb,
+  ListChecks,
+  MessageCircle,
+  Sparkles,
+} from "lucide-react";
+import ActionButtonsRow from "./chat/ActionButtonsRow.jsx";
 
-const BTN =
-  "min-h-[48px] touch-manipulation rounded-xl px-3 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40";
+function buildQuickActions({
+  ut,
+  sendLine,
+  sendPreset,
+  onUserActivity,
+  onRequestHint,
+  onRequestExample,
+  onGiveUp,
+}) {
+  const hintBtn = {
+    key: "hint",
+    label: "Подсказка",
+    title: "Попросить подсказку у тьютора",
+    icon: <Lightbulb className="shrink-0" strokeWidth={2} />,
+    variant: "amber",
+    needsSendGate: false,
+    onClick: () => {
+      onUserActivity?.();
+      onRequestHint();
+    },
+  };
+  const simplerBtn = {
+    key: "simpler",
+    label: "Объясни проще",
+    title: "Переформулировать вопрос проще",
+    icon: <BookOpen className="shrink-0" strokeWidth={2} />,
+    variant: "rose",
+    needsSendGate: false,
+    onClick: () => {
+      onUserActivity?.();
+      onGiveUp();
+    },
+  };
+
+  if (ut === "lazy") {
+    return [
+      {
+        key: "try",
+        label: "Попробую",
+        icon: <Sparkles className="shrink-0" strokeWidth={2} />,
+        variant: "neutral",
+        onClick: () => sendLine("Ок, попробую ответить своими словами"),
+      },
+      {
+        key: "dont",
+        label: "Не знаю",
+        icon: <HelpCircle className="shrink-0" strokeWidth={2} />,
+        variant: "neutral",
+        onClick: () => sendPreset("Не знаю"),
+      },
+      hintBtn,
+      simplerBtn,
+    ];
+  }
+  if (ut === "anxious") {
+    return [
+      {
+        key: "try-exp",
+        label: "Я попробую объяснить",
+        icon: <MessageCircle className="shrink-0" strokeWidth={2} />,
+        variant: "neutral",
+        onClick: () => sendLine("Я попробую объяснить, как понимаю"),
+      },
+      {
+        key: "example",
+        label: "Дай пример",
+        icon: <GraduationCap className="shrink-0" strokeWidth={2} />,
+        variant: "neutral",
+        onClick: () => {
+          onUserActivity?.();
+          onRequestExample?.();
+        },
+      },
+      hintBtn,
+      simplerBtn,
+    ];
+  }
+  return [
+    {
+      key: "harder",
+      label: "Усложни",
+      icon: <ListChecks className="shrink-0" strokeWidth={2} />,
+      variant: "neutral",
+      onClick: () => sendLine("Усложни вопрос — хочу копнуть глубже"),
+    },
+    {
+      key: "task",
+      label: "Дай задачу",
+      icon: <ClipboardList className="shrink-0" strokeWidth={2} />,
+      variant: "neutral",
+      onClick: () => sendLine("Дай небольшую задачу на размышление"),
+    },
+    hintBtn,
+    simplerBtn,
+  ];
+}
 
 export default function InputBox({
   userType = "lazy",
@@ -44,116 +149,29 @@ export default function InputBox({
     onSend(text);
   };
 
-  const rowNeutral =
-    "border border-slate-300 bg-white text-slate-800 active:bg-slate-100 [@media(hover:hover)]:hover:border-slate-400 dark:border-slate-600/70 dark:bg-[#0f172a] dark:text-slate-200 dark:active:bg-slate-800 dark:[@media(hover:hover)]:hover:border-slate-500";
-  const rowAmber =
-    "border border-amber-600/40 bg-amber-100 font-semibold text-amber-950 active:bg-amber-200 [@media(hover:hover)]:hover:bg-amber-200 dark:border-amber-500/45 dark:bg-amber-500/15 dark:text-amber-100 dark:active:bg-amber-500/25 dark:[@media(hover:hover)]:hover:bg-amber-500/20";
-  const rowRose =
-    "border border-rose-500/50 bg-rose-100 font-semibold text-rose-900 active:bg-rose-200 [@media(hover:hover)]:hover:bg-rose-200 dark:border-rose-500/45 dark:bg-rose-500/12 dark:text-rose-100 dark:active:bg-rose-500/22 dark:[@media(hover:hover)]:hover:bg-rose-500/18";
+  const quickActions = buildQuickActions({
+    ut,
+    sendLine,
+    sendPreset,
+    onUserActivity,
+    onRequestHint,
+    onRequestExample,
+    onGiveUp,
+  });
 
   return (
     <div
       data-tour="chat-input"
-      className="input-dock z-20 shrink-0 border-t border-slate-200 bg-slate-50/98 px-3 pt-3 backdrop-blur max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:right-0 lg:relative lg:px-4 dark:border-slate-800 dark:bg-[#020617]/98"
+      className="input-dock z-20 shrink-0 border-t border-slate-200 bg-slate-50/98 px-3 pt-2 backdrop-blur max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:right-0 lg:relative lg:px-4 dark:border-slate-800 dark:bg-[#020617]/98"
     >
-      <div className="mx-auto flex max-w-3xl flex-col gap-3">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-2">
         {topBar ? (
-          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/90 pb-2 dark:border-slate-800/70">
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/90 pb-1.5 dark:border-slate-800/70">
             {topBar}
           </div>
         ) : null}
-        <div className="grid grid-cols-2 gap-2">
-          {ut === "lazy" ? (
-            <>
-              <button
-                type="button"
-                disabled={loading || !canSend()}
-                onClick={() => sendLine("Ок, попробую ответить своими словами")}
-                className={`${BTN} ${rowNeutral}`}
-              >
-                Попробую
-              </button>
-              <button
-                type="button"
-                disabled={loading || !canSend()}
-                onClick={() => sendPreset("Не знаю")}
-                className={`${BTN} ${rowNeutral}`}
-              >
-                Не знаю
-              </button>
-            </>
-          ) : null}
 
-          {ut === "anxious" ? (
-            <>
-              <button
-                type="button"
-                disabled={loading || !canSend()}
-                onClick={() => sendLine("Я попробую объяснить, как понимаю")}
-                className={`${BTN} ${rowNeutral}`}
-              >
-                Я попробую объяснить
-              </button>
-              <button
-                type="button"
-                disabled={loading || !canSend()}
-                onClick={() => {
-                  onUserActivity?.();
-                  onRequestExample?.();
-                }}
-                className={`${BTN} ${rowNeutral}`}
-              >
-                Дай пример
-              </button>
-            </>
-          ) : null}
-
-          {ut === "thinker" ? (
-            <>
-              <button
-                type="button"
-                disabled={loading || !canSend()}
-                onClick={() => sendLine("Усложни вопрос — хочу копнуть глубже")}
-                className={`${BTN} ${rowNeutral}`}
-              >
-                Усложни
-              </button>
-              <button
-                type="button"
-                disabled={loading || !canSend()}
-                onClick={() => sendLine("Дай небольшую задачу на размышление")}
-                className={`${BTN} ${rowNeutral}`}
-              >
-                Дай задачу
-              </button>
-            </>
-          ) : null}
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => {
-              onUserActivity?.();
-              onRequestHint();
-            }}
-            className={`${BTN} ${rowAmber}`}
-          >
-            Подсказка
-          </button>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => {
-              onUserActivity?.();
-              onGiveUp();
-            }}
-            className={`${BTN} ${rowRose}`}
-          >
-            Объясни проще
-          </button>
-        </div>
+        <ActionButtonsRow actions={quickActions} loading={loading} canSend={canSend} />
 
         <div className="flex gap-2">
           <textarea

@@ -98,6 +98,9 @@ export default function SidePanel({
   /** В аккаунте уровень/прогресс бара — от мудрости, а не от attempts сессии (не сбрасываются при смене диалога). */
   accountGamification = false,
   gamificationPublic = null,
+  /** Компактный «Вызов дня» (верх панели). */
+  dailyChallengeSlot = null,
+  conversationListSlot = null,
 }) {
   const wisdomLevel = Math.max(1, Number(gamificationPublic?.level) || 1);
   const wisdomPoints = Math.max(0, Number(gamificationPublic?.wisdom_points) || 0);
@@ -117,7 +120,9 @@ export default function SidePanel({
       : streak;
 
   return (
-    <aside className="hidden max-h-[100dvh] w-full flex-col gap-4 overflow-y-auto border-t border-slate-200 bg-slate-50 p-4 lg:flex lg:w-[30%] lg:min-w-[260px] lg:max-w-md lg:border-l lg:border-t-0 dark:border-slate-800/80 dark:bg-[#0f172a]">
+    <aside className="hidden max-h-[100dvh] w-full shrink-0 flex-col gap-4 overflow-y-auto border-t border-slate-200 bg-slate-50 p-4 lg:flex lg:w-[280px] lg:min-w-[280px] lg:max-w-[280px] lg:border-l lg:border-t-0 dark:border-slate-800/80 dark:bg-[#0f172a]">
+      {dailyChallengeSlot}
+      {conversationListSlot}
       <TutorAvatar mood={avatarMood} whisperIndex={avatarWhisperIdx} />
 
       <UserMemoryPanel memory={memory} />

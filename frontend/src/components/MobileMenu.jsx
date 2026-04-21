@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 const linkCls =
   "block rounded-lg px-3 py-3 text-sm font-medium text-slate-800 active:bg-slate-100 dark:text-slate-100 dark:active:bg-slate-800";
 
-export default function MobileMenu({ open, onClose, isAdmin, loggedIn }) {
+export default function MobileMenu({ open, onClose, isAdmin, isEducator, loggedIn }) {
   return (
     <AnimatePresence>
       {open ? (
@@ -64,6 +64,11 @@ export default function MobileMenu({ open, onClose, isAdmin, loggedIn }) {
               {isAdmin ? (
                 <Link to="/admin" className={linkCls} onClick={onClose}>
                   Админка
+                </Link>
+              ) : null}
+              {isEducator ? (
+                <Link to="/educator" className={linkCls} onClick={onClose}>
+                  Панель учителя
                 </Link>
               ) : null}
             </div>

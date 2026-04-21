@@ -2,6 +2,8 @@ import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getUserSkills, resetProgress } from "../api/userApi.js";
+import { fetchGamificationProgressMe } from "../api/gamificationApi.js";
+import ShareModal from "../components/sharing/ShareModal.jsx";
 
 const SKILL_TIPS = {
   avoid_straw_man:
@@ -49,6 +51,9 @@ export default function SkillsDashboard() {
   const [skills, setSkills] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [wisdomPoints, setWisdomPoints] = useState(0);
+  const [streakDays, setStreakDays] = useState(0);
 
   async function load() {
     setError("");
@@ -56,6 +61,9 @@ export default function SkillsDashboard() {
     try {
       const data = await getUserSkills();
       setSkills(Array.isArray(data) ? data : []);
+      const g = await fetchGamificationProgressMe();
+      if (g?.wisdom_points != null) setWisdomPoints(Number(g.wisdom_points) || 0);
+      if (g?.streak_days != null) setStreakDays(Number(g.streak_days) || 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка загрузки");
     } finally {
@@ -82,11 +90,34 @@ export default function SkillsDashboard() {
           Педагогика
         </Link>
       </nav>
-      <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-white">Навыки</h1>
-      <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">
-        Уровни обновляются после твоих ответов в чате (в фоне). График по дням можно добавить позже; сейчас —
-        текущий срез.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-white">Навыки</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">
+            Уровни обновляются после твоих ответов в чате (в фоне). График по дням можно добавить позже; сейчас —
+            текущий срез.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShareOpen(true)}
+          className="shrink-0 rounded-full border border-amber-500/50 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/40"
+        >
+          Поделиться прогрессом
+        </button>
+      </div>
+
+      {shareOpen ? (
+        <ShareModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          variant="skills"
+          headline="Мои навыки в Socrates-AI"
+          subline={`Серия дней: ${streakDays}`}
+          wisdomPoints={wisdomPoints}
+          streakDays={streakDays}
+        />
+      ) : null}
       {error ? <p className="mt-4 text-red-600 dark:text-red-400">{error}</p> : null}
       {loading ? <p className="mt-6 text-slate-500">Загрузка…</p> : null}
       <div className="mx-auto mt-6 grid max-w-3xl gap-4">

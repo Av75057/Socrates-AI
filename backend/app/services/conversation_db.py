@@ -71,12 +71,28 @@ def get_owned_conversation(db: Session, user_id: int, conversation_id: int) -> C
     return c
 
 
-def create_conversation(db: Session, user_id: int, title: str | None, session_key: str) -> Conversation:
+def get_owned_conversation_by_session_key(db: Session, user_id: int, session_key: str) -> Conversation | None:
+    return db.execute(
+        select(Conversation).where(
+            Conversation.user_id == user_id,
+            Conversation.session_key == session_key,
+        )
+    ).scalar_one_or_none()
+
+
+def create_conversation(
+    db: Session,
+    user_id: int,
+    title: str | None,
+    session_key: str,
+    assignment_id: int | None = None,
+) -> Conversation:
     now = datetime.now(timezone.utc)
     c = Conversation(
         user_id=user_id,
         title=(title or "Новый диалог")[:512],
         session_key=session_key,
+        assignment_id=assignment_id,
         started_at=now,
         last_updated_at=now,
     )
@@ -84,6 +100,22 @@ def create_conversation(db: Session, user_id: int, title: str | None, session_ke
     db.commit()
     db.refresh(c)
     return c
+
+
+def get_or_create_conversation_by_session_key(
+    db: Session,
+    user_id: int,
+    session_key: str,
+    title: str | None,
+    assignment_id: int | None = None,
+) -> Conversation:
+    c = get_owned_conversation_by_session_key(db, user_id, session_key)
+    if c is not None:
+        if assignment_id is not None and c.assignment_id is None:
+            c.assignment_id = assignment_id
+            db.commit()
+        return c
+    return create_conversation(db, user_id, title, session_key, assignment_id=assignment_id)
 
 
 def touch_conversation(db: Session, conv: Conversation) -> None:
@@ -147,6 +179,7 @@ def append_messages(
     user_text: str,
     tutor_text: str,
     fallacy: dict[str, Any] | None,
+    client_message_id: str | None = None,
 ) -> tuple[int, int] | None:
     conv = get_owned_conversation(db, user_id, conversation_id)
     if conv is None:
@@ -155,6 +188,7 @@ def append_messages(
         conversation_id=conv.id,
         role="user",
         content=user_text,
+        client_message_id=(client_message_id or "").strip() or None,
         fallacy_detected=fallacy,
     )
     t_row = Message(
@@ -171,6 +205,45 @@ def append_messages(
         conv.title = user_text.strip()[:512]
     touch_conversation(db, conv)
     return (uid, tid)
+
+
+def find_duplicate_turn(
+    db: Session,
+    user_id: int,
+    conversation_id: int,
+    client_message_id: str,
+) -> tuple[Message, Message] | None:
+    conv = get_owned_conversation(db, user_id, conversation_id)
+    if conv is None:
+        return None
+    cmid = (client_message_id or "").strip()
+    if not cmid:
+        return None
+    user_msg = db.execute(
+        select(Message)
+        .where(
+            Message.conversation_id == conv.id,
+            Message.role == "user",
+            Message.client_message_id == cmid,
+        )
+        .order_by(Message.id.asc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if user_msg is None:
+        return None
+    tutor_msg = db.execute(
+        select(Message)
+        .where(
+            Message.conversation_id == conv.id,
+            Message.role == "tutor",
+            Message.id > user_msg.id,
+        )
+        .order_by(Message.id.asc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if tutor_msg is None:
+        return None
+    return (user_msg, tutor_msg)
 
 
 def update_user_message_content(

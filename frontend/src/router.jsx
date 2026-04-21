@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate, useRouteError } from "react-router-dom";
 import AdminRoute from "./components/auth/AdminRoute.jsx";
+import EducatorRoute from "./components/auth/EducatorRoute.jsx";
 import PrivateRoute from "./components/auth/PrivateRoute.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
 import StudentLandingPage from "./pages/StudentLandingPage.jsx";
@@ -17,6 +18,12 @@ import ForbiddenPage from "./pages/ForbiddenPage.jsx";
 import AdminHomePage from "./pages/AdminHomePage.jsx";
 import AdminUsersPage from "./pages/AdminUsersPage.jsx";
 import AdminStatsPage from "./pages/AdminStatsPage.jsx";
+import AdminLLMPage from "./pages/AdminLLMPage.jsx";
+import PublicConversationPage from "./pages/PublicConversationPage.jsx";
+import EducatorDashboard from "./pages/EducatorDashboard.jsx";
+import EducatorClassPage from "./pages/EducatorClassPage.jsx";
+import EducatorStudentPage from "./pages/EducatorStudentPage.jsx";
+import EducatorConversationPage from "./pages/EducatorConversationPage.jsx";
 
 function RouteErrorScreen() {
   const err = useRouteError();
@@ -78,6 +85,7 @@ export const router = createBrowserRouter(
     { path: "/app/admin/*", element: <Navigate to="/admin" replace /> },
     { path: "/login", element: <LoginPage /> },
     { path: "/register", element: <RegisterPage /> },
+    { path: "/share/:slug", element: <PublicConversationPage />, errorElement: <RouteErrorScreen /> },
     { path: "/forbidden", element: <ForbiddenPage /> },
     {
       path: "/profile",
@@ -149,6 +157,46 @@ export const router = createBrowserRouter(
         <AdminRoute>
           <AdminStatsPage />
         </AdminRoute>
+      ),
+    },
+    {
+      path: "/admin/llm",
+      element: (
+        <AdminRoute>
+          <AdminLLMPage />
+        </AdminRoute>
+      ),
+    },
+    {
+      path: "/educator",
+      element: (
+        <EducatorRoute>
+          <EducatorDashboard />
+        </EducatorRoute>
+      ),
+    },
+    {
+      path: "/educator/class/:id",
+      element: (
+        <EducatorRoute>
+          <EducatorClassPage />
+        </EducatorRoute>
+      ),
+    },
+    {
+      path: "/educator/student/:id",
+      element: (
+        <EducatorRoute>
+          <EducatorStudentPage />
+        </EducatorRoute>
+      ),
+    },
+    {
+      path: "/educator/conversation/:id",
+      element: (
+        <EducatorRoute>
+          <EducatorConversationPage />
+        </EducatorRoute>
       ),
     },
     { path: "*", element: <NotFoundPage /> },

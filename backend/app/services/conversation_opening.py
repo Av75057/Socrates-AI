@@ -17,11 +17,11 @@ from app.services.learning_service import (
 )
 from app.services.model_router import ModelRouter
 from app.services.prompt_builder import build_prompt
-from app.services.user_settings_db import get_tutor_mode
+from app.services.user_settings_db import build_model_router_for_user, get_tutor_mode
 
 log = logging.getLogger(__name__)
 
-_BAD_OPENING = re.compile(r"^\[OpenRouter\]")
+_BAD_OPENING = re.compile(r"^\[(?:OpenRouter|LLM)\]")
 
 
 def _load_opening_context(user_id: int, topic: str) -> tuple[str, str, int, str]:
@@ -64,7 +64,11 @@ async def generate_conversation_opening_message(user_id: int, topic: str) -> str
         "Без формального приветствия; не копируй дословно длинное название темы."
     )
     try:
-        router = ModelRouter()
+        def _router() -> ModelRouter:
+            with SessionLocal() as db:
+                return build_model_router_for_user(db, user_id)
+
+        router = await run_in_threadpool(_router)
         text = (await router.generate(prompt, user_line, "question")).strip()
     except Exception:
         log.exception("opening LLM failed user_id=%s", user_id)
