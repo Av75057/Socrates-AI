@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5:7b-instruct"
     # Публичные ссылки: базовый URL фронта (для share_url и og:url). Напр. https://app.example.com
     public_site_url: str = ""
+    # Публичный URL backend для абсолютных media/file ссылок. Если пусто, используются относительные пути.
+    public_api_url: str = ""
+    # Каталог для пользовательских загрузок (аватары и пр.).
+    uploads_dir: str = "uploads"
     # OpenRouter: ключ и опции также можно задать только через env (см. model_router.py).
 
 

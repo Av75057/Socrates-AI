@@ -33,6 +33,9 @@ export default function EducatorDashboard() {
         <Link to="/profile" className="text-cyan-700 underline dark:text-cyan-400">
           Профиль
         </Link>
+        <Link to="/admin/topics" className="text-cyan-700 underline dark:text-cyan-400">
+          Темы
+        </Link>
       </nav>
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <section>

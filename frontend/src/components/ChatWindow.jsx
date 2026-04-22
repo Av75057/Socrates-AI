@@ -135,6 +135,7 @@ const ChatWindow = forwardRef(function ChatWindow(
             canEdit={canEditMessages}
             onEdit={onEditMessage}
             onDelete={onDeleteMessage}
+            streaming={m.streaming}
           />
         ))}
 

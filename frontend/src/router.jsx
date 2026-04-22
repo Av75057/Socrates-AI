@@ -24,6 +24,9 @@ import EducatorDashboard from "./pages/EducatorDashboard.jsx";
 import EducatorClassPage from "./pages/EducatorClassPage.jsx";
 import EducatorStudentPage from "./pages/EducatorStudentPage.jsx";
 import EducatorConversationPage from "./pages/EducatorConversationPage.jsx";
+import TopicsLibraryPage from "./pages/TopicsLibraryPage.jsx";
+import AdminTopicsPage from "./pages/AdminTopicsPage.jsx";
+import PricingPage from "./pages/PricingPage.jsx";
 
 function RouteErrorScreen() {
   const err = useRouteError();
@@ -81,6 +84,8 @@ export const router = createBrowserRouter(
     },
     { path: "/parent", element: <Navigate to="/for-parents" replace /> },
     { path: "/app", element: <ChatPage />, errorElement: <RouteErrorScreen /> },
+    { path: "/topics", element: <TopicsLibraryPage />, errorElement: <RouteErrorScreen /> },
+    { path: "/pricing", element: <PricingPage />, errorElement: <RouteErrorScreen /> },
     { path: "/app/admin", element: <Navigate to="/admin" replace /> },
     { path: "/app/admin/*", element: <Navigate to="/admin" replace /> },
     { path: "/login", element: <LoginPage /> },
@@ -165,6 +170,14 @@ export const router = createBrowserRouter(
         <AdminRoute>
           <AdminLLMPage />
         </AdminRoute>
+      ),
+    },
+    {
+      path: "/admin/topics",
+      element: (
+        <EducatorRoute>
+          <AdminTopicsPage />
+        </EducatorRoute>
       ),
     },
     {

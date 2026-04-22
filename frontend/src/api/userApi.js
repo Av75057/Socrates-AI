@@ -42,6 +42,12 @@ export async function fetchSettings() {
   return res.json();
 }
 
+export async function fetchSubscription() {
+  const res = await apiFetch("/users/me/subscription");
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function updateSettings(body) {
   const res = await apiFetch("/users/me/settings", {
     method: "PUT",

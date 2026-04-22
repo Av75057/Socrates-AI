@@ -6,11 +6,15 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, AsyncGenerator
 
 import httpx
 
-from app.services.llm.global_call import LLM_UNAVAILABLE, chat_completion_global_async
+from app.services.llm.global_call import (
+    LLM_UNAVAILABLE,
+    chat_completion_global_async,
+    chat_completion_global_stream_async,
+)
 from app.services.llm.runtime import get_effective_ollama_model, get_effective_provider
 from app.services.response_validator import validate_response
 
@@ -164,6 +168,80 @@ class ModelRouter:
             messages, model=model, temperature=temperature, max_tokens=max_tokens
         )
 
+    async def _call_user_endpoint_stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        *,
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncGenerator[str, None]:
+        if not self._api_key and self._openrouter_brand:
+            yield (
+                "[OpenRouter] Задайте OPENROUTER_API_KEY в backend/.env. "
+                "Пока опиши своими словами, что ты уже понимаешь по теме."
+            )
+            return
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        headers = self._headers()
+        async with httpx.AsyncClient(timeout=self._timeout_s) as client:
+            async with client.stream("POST", self._api_url, json=payload, headers=headers) as response:
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    yield _http_error_message(e, openrouter=self._openrouter_brand)
+                    return
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data = line[6:].strip()
+                    if not data or data == "[DONE]":
+                        if data == "[DONE]":
+                            break
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    content = delta.get("content")
+                    if isinstance(content, str) and content:
+                        yield content
+
+    async def call_model_stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        *,
+        temperature: float = 0.7,
+        max_tokens: int = 300,
+    ) -> AsyncGenerator[str, None]:
+        if self._uses_user_llm_endpoint():
+            async for chunk in self._call_user_endpoint_stream(
+                messages,
+                model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ):
+                yield chunk
+            return
+        async for chunk in chat_completion_global_stream_async(
+            messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            yield chunk
+
     async def generate(self, system_prompt: str, user_message: str, mode: str) -> str:
         messages: list[dict[str, str]] = [
             {"role": "system", "content": system_prompt},
@@ -186,6 +264,43 @@ class ModelRouter:
             pass
 
         return "Попробуй объяснить это своими словами по-русски."
+
+    async def generate_stream(
+        self,
+        system_prompt: str,
+        user_message: str,
+        mode: str,
+    ) -> AsyncGenerator[str, None]:
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ]
+        primary = self.select_model(mode)
+        yielded = False
+
+        try:
+            async for chunk in self.call_model_stream(messages, primary):
+                if not chunk:
+                    continue
+                yielded = True
+                yield chunk
+            return
+        except (httpx.HTTPError, ValueError, KeyError, json.JSONDecodeError):
+            if yielded:
+                raise
+
+        try:
+            async for chunk in self.call_model_stream(messages, self._fallback_model()):
+                if not chunk:
+                    continue
+                yielded = True
+                yield chunk
+            return
+        except (httpx.HTTPError, ValueError, KeyError, json.JSONDecodeError):
+            if yielded:
+                raise
+
+        yield "Попробуй объяснить это своими словами по-русски."
 
     async def call_pedagogy_llm(self, system_prompt: str, user_prompt: str) -> str:
         messages = [

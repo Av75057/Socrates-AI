@@ -384,6 +384,7 @@ export const useChatStore = create((set, get) => ({
       messages: [
         ...s.messages,
         {
+          ...meta,
           id,
           role,
           text,
@@ -414,6 +415,11 @@ export const useChatStore = create((set, get) => ({
   updateMessageText: (messageId, text) =>
     set((s) => ({
       messages: s.messages.map((m) => (m.id === messageId ? { ...m, text } : m)),
+    })),
+
+  updateMessageMeta: (messageId, patch) =>
+    set((s) => ({
+      messages: s.messages.map((m) => (m.id === messageId ? { ...m, ...patch } : m)),
     })),
 
   /** Удалить сообщение с данным id и все ниже (уже после ответа сервера). */
@@ -463,7 +469,7 @@ export const useChatStore = create((set, get) => ({
 
   canSend: () => {
     const now = Date.now();
-    return !get().loading && now - get().lastSendAt > 800;
+    return now - get().lastSendAt > 800;
   },
 
   markSent: () => set({ lastSendAt: Date.now() }),

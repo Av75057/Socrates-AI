@@ -15,6 +15,8 @@ dist/
 # Node
 frontend/node_modules/
 frontend/dist/
+mobile/node_modules/
+mobile/.expo/
 npm-debug.log*
 
 # OS / IDE

@@ -44,3 +44,20 @@ body.chat-route-lock #root {
     font-family: Inter, system-ui, sans-serif;
   }
 }
+
+.blinking-cursor {
+  display: inline-block;
+  margin-left: 1px;
+  animation: socrates-blink-cursor 1s steps(1, end) infinite;
+}
+
+@keyframes socrates-blink-cursor {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}

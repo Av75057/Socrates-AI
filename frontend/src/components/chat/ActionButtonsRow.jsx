@@ -15,7 +15,7 @@ const BASE =
  * @param {{ key: string, label: string, title?: string, icon: React.ReactNode, variant: keyof VARIANT, onClick: () => void, needsSendGate?: boolean }[]} actions
  * needsSendGate: false для «Подсказка» / «Объясни проще» (как в InputBox — только loading).
  */
-export default function ActionButtonsRow({ actions, loading, canSend }) {
+export default function ActionButtonsRow({ actions, loading, canSend, interruptibleLoading = false }) {
   return (
     <div
       data-tour="quick-actions"
@@ -25,7 +25,7 @@ export default function ActionButtonsRow({ actions, loading, canSend }) {
     >
       {actions.map((a) => {
         const gated = a.needsSendGate !== false;
-        const disabled = loading || (gated && !canSend());
+        const disabled = (loading && !interruptibleLoading) || (gated && !canSend());
         return (
           <button
             key={a.key}

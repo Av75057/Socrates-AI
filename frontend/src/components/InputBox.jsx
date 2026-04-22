@@ -112,6 +112,7 @@ export default function InputBox({
   userType = "lazy",
   onSend,
   loading,
+  interruptibleLoading = false,
   canSend,
   onRequestHint,
   onRequestExample,
@@ -123,23 +124,24 @@ export default function InputBox({
 }) {
   const [value, setValue] = useState("");
   const ut = ["lazy", "anxious", "thinker"].includes(userType) ? userType : "lazy";
+  const blockedByLoading = loading && !interruptibleLoading;
 
   const submit = () => {
     const t = value.trim();
-    if (!t || loading || !canSend()) return;
+    if (!t || blockedByLoading || !canSend()) return;
     onUserActivity?.();
     onSend(t);
     setValue("");
   };
 
   const sendLine = (text) => {
-    if (loading || !canSend()) return;
+    if (blockedByLoading || !canSend()) return;
     onUserActivity?.();
     onSend(text);
   };
 
   const sendPreset = (text) => {
-    if (loading || !canSend()) return;
+    if (blockedByLoading || !canSend()) return;
     onUserActivity?.();
     if (text === "Не знаю") onQuickDontKnow?.();
     if (text === "Дай пример") {
@@ -171,7 +173,12 @@ export default function InputBox({
           </div>
         ) : null}
 
-        <ActionButtonsRow actions={quickActions} loading={loading} canSend={canSend} />
+        <ActionButtonsRow
+          actions={quickActions}
+          loading={loading}
+          canSend={canSend}
+          interruptibleLoading={interruptibleLoading}
+        />
 
         <div className="flex gap-2">
           <textarea
@@ -192,12 +199,12 @@ export default function InputBox({
               }
             }}
             placeholder="Напиши ответ…"
-            disabled={loading}
+            disabled={blockedByLoading}
             className="min-h-[48px] max-h-[8rem] flex-1 resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm leading-snug text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/25 disabled:opacity-60 sm:text-base dark:border-slate-600/80 dark:bg-[#0f172a] dark:text-white dark:placeholder:text-slate-500 dark:focus:border-blue-500/60"
           />
           <button
             type="button"
-            disabled={loading || !value.trim() || !canSend()}
+            disabled={blockedByLoading || !value.trim() || !canSend()}
             onClick={submit}
             aria-label="Отправить"
             className="flex h-[48px] min-w-[48px] shrink-0 touch-manipulation items-center justify-center self-end rounded-xl bg-blue-500 px-4 text-lg font-semibold text-white active:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-40 [@media(hover:hover)]:hover:bg-blue-600"

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any, AsyncGenerator, Literal
 
 from sqlalchemy import select
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -32,6 +35,7 @@ from app.services.skill_tree_manager import (
     resolve_track_hint,
 )
 from app.services.tutor_controller import TutorController
+from app.services.tutor_prompt import is_tutor_answering_for_student
 from app.services.conversation_db import (
     append_messages,
     find_duplicate_turn,
@@ -44,10 +48,31 @@ from app.services.learning_service import (
     hydrate_session_pedagogy_from_db,
     update_user_learning_progress_sync,
 )
-from app.services.user_settings_db import build_model_router_for_user, get_tutor_mode
+from app.services.user_settings_db import build_model_router_for_user, get_russian_only, get_tutor_mode
 
 router = APIRouter()
 log = logging.getLogger(__name__)
+_SAFE_TUTOR_FALLBACK = "Хорошо. А как бы ты ответил сам?"
+
+
+@dataclass
+class PreparedChatTurn:
+    body: "ChatRequest"
+    redis_client: Any
+    db_user: User | None
+    msg_stripped: str
+    idle_turn: bool
+    active_conversation_id: int | None
+    state: Any
+    memory: Any
+    mid: str
+    prev_skill: dict[str, str]
+    pedagogy_state: Any
+    persistent_profile: str
+    russian_only: bool
+    cheat: bool
+    router: ModelRouter
+    analysis: dict[str, Any] | None
 
 
 def _pedagogy_mode_str(mode: Any) -> str:
@@ -152,12 +177,16 @@ def _initial_conversation_title(body: ChatRequest) -> str:
     return seed[:50]
 
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat(
+def _sse_event(event: str, data: Any) -> str:
+    payload = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
+    return f"event: {event}\ndata: {payload}\n\n"
+
+
+async def _prepare_chat_turn(
     body: ChatRequest,
-    r=Depends(redis_dep),
-    db_user: User | None = Depends(get_current_user_optional),
-):
+    r: Any,
+    db_user: User | None,
+) -> tuple[PreparedChatTurn, ChatResponse | None]:
     msg_stripped = (body.message or "").strip()
     idle_turn = body.action == "none" and not msg_stripped
     active_conversation_id = body.conversation_id
@@ -228,28 +257,27 @@ async def chat(
                 )
 
         await run_in_threadpool(_hydr_history)
-    if db_user:
-        mid = str(db_user.id)
-    else:
-        mid = (body.memory_user_id or body.session_id).strip()
+
+    mid = str(db_user.id) if db_user else (body.memory_user_id or body.session_id).strip()
     memory = await load_memory(r, mid)
-    # Тип ученика хранится в долговременной памяти; новый session_id в Redis иначе даёт lazy («новичок»).
     if memory.user_type in ("lazy", "anxious", "thinker"):
         state.user_type = memory.user_type
     prev_skill = dict(memory.skill_status)
     pedagogy_state = await load_pedagogy(r, body.session_id)
 
     persistent_profile = ""
+    russian_only = True
     if db_user:
 
-        def _hydrate_and_profile() -> tuple[str, str]:
+        def _hydrate_and_profile() -> tuple[str, str, bool]:
             with SessionLocal() as db:
                 hydrate_session_pedagogy_from_db(db, db_user.id, pedagogy_state)
                 tm = get_tutor_mode(db, db_user.id)
                 prof = build_persistent_profile_for_prompt(db, db_user.id)
-                return tm, prof
+                ru = get_russian_only(db, db_user.id)
+                return tm, prof, ru
 
-        tm, persistent_profile = await run_in_threadpool(_hydrate_and_profile)
+        tm, persistent_profile, russian_only = await run_in_threadpool(_hydrate_and_profile)
         try:
             pedagogy_state.mode = TutorMode(tm)
         except ValueError:
@@ -306,37 +334,56 @@ async def chat(
                     fallacy_description=stored_fallacy.get("fallacy_description"),
                     suggestion=stored_fallacy.get("suggestion"),
                 )
-            return ChatResponse(
-                reply=stored_reply,
-                mode=state.mode,
-                attempts=state.attempts,
-                frustration=state.frustration,
-                frustration_level=min(3, state.frustration),
-                user_type=ut,
-                topic=state.topic,
-                memory=MemoryOut(
-                    topics=md["topics"],
-                    mistakes=md["mistakes"],
-                    progress=md["progress"],
-                    user_type=md["user_type"],
-                    skill_status=md.get("skill_status") or {},
-                    thinking_profile=md.get("thinking_profile") or {},
+            return (
+                PreparedChatTurn(
+                    body=body,
+                    redis_client=r,
+                    db_user=db_user,
+                    msg_stripped=msg_stripped,
+                    idle_turn=idle_turn,
+                    active_conversation_id=active_conversation_id,
+                    state=state,
+                    memory=memory,
+                    mid=mid,
+                    prev_skill=prev_skill,
+                    pedagogy_state=pedagogy_state,
+                    persistent_profile=persistent_profile,
+                    russian_only=russian_only,
+                    cheat=cheat,
+                    router=router,
+                    analysis=None,
                 ),
-                skill_tree=skill_tree,
-                pedagogy=PedagogyOut(
-                    mode=_pedagogy_mode_str(pedagogy_state.mode),
-                    difficulty_level=pedagogy_state.difficulty_level,
-                    last_response_depth=round(pedagogy_state.last_response_depth, 3),
-                    fallacy=fal,
+                ChatResponse(
+                    reply=stored_reply,
+                    mode=state.mode,
+                    attempts=state.attempts,
+                    frustration=state.frustration,
+                    frustration_level=min(3, state.frustration),
+                    user_type=ut,
+                    topic=state.topic,
+                    memory=MemoryOut(
+                        topics=md["topics"],
+                        mistakes=md["mistakes"],
+                        progress=md["progress"],
+                        user_type=md["user_type"],
+                        skill_status=md.get("skill_status") or {},
+                        thinking_profile=md.get("thinking_profile") or {},
+                    ),
+                    skill_tree=skill_tree,
+                    pedagogy=PedagogyOut(
+                        mode=_pedagogy_mode_str(pedagogy_state.mode),
+                        difficulty_level=pedagogy_state.difficulty_level,
+                        last_response_depth=round(pedagogy_state.last_response_depth, 3),
+                        fallacy=fal,
+                    ),
+                    persisted_user_message_id=user_mid,
+                    persisted_assistant_message_id=tutor_mid,
+                    conversation_id=active_conversation_id,
+                    session_key=body.session_id,
                 ),
-                persisted_user_message_id=user_mid,
-                persisted_assistant_message_id=tutor_mid,
-                conversation_id=active_conversation_id,
-                session_key=body.session_id,
             )
 
     analysis: dict[str, Any] | None = None
-    fallacy_instr = ""
     if not cheat and not idle_turn and body.action == "none" and msg_stripped:
         analysis = await analyze_response(
             router,
@@ -344,50 +391,66 @@ async def chat(
             _last_assistant_question(state.history),
             _history_to_text(state.history, max_messages=10),
         )
-        fallacy_instr = build_fallacy_instruction(_pedagogy_mode_str(pedagogy_state.mode), analysis)
         if analysis.get("has_fallacy"):
             ft = str(analysis.get("fallacy_type") or "")
             if ft and ft != "none" and ft not in pedagogy_state.common_fallacies:
                 pedagogy_state.common_fallacies.append(ft)
                 pedagogy_state.common_fallacies = pedagogy_state.common_fallacies[-15:]
 
-    pctx = PedagogyTurnContext(
-        tutor_mode=_pedagogy_mode_str(pedagogy_state.mode),
-        difficulty_level=pedagogy_state.difficulty_level,
-        fallacy_instruction=fallacy_instr,
-        persistent_profile=persistent_profile,
+    return (
+        PreparedChatTurn(
+            body=body,
+            redis_client=r,
+            db_user=db_user,
+            msg_stripped=msg_stripped,
+            idle_turn=idle_turn,
+            active_conversation_id=active_conversation_id,
+            state=state,
+            memory=memory,
+            mid=mid,
+            prev_skill=prev_skill,
+            pedagogy_state=pedagogy_state,
+            persistent_profile=persistent_profile,
+            russian_only=russian_only,
+            cheat=cheat,
+            router=router,
+            analysis=analysis,
+        ),
+        None,
     )
 
-    controller = TutorController(router)
-    try:
-        reply, mode = await controller.handle_turn(
-            state, body.message, body.action, memory, pedagogy=pctx
-        )
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
+
+async def _finalize_chat_turn(prepared: PreparedChatTurn, reply: str, mode: str) -> ChatResponse:
+    body = prepared.body
+    r = prepared.redis_client
+    state = prepared.state
+    memory = prepared.memory
+    pedagogy_state = prepared.pedagogy_state
+    analysis = prepared.analysis
+
     await save_state(r, body.session_id, state)
 
-    if not cheat and not idle_turn:
+    if not prepared.cheat and not prepared.idle_turn:
         memory = update_memory_after_turn(memory, state, _line_for_memory_update(body), mode)
-        await save_memory(r, mid, memory)
+        await save_memory(r, prepared.mid, memory)
 
     if body.action == "hint":
         apply_hint_penalty(pedagogy_state)
-    elif body.action == "none" and msg_stripped and not cheat and analysis is not None:
+    elif body.action == "none" and prepared.msg_stripped and not prepared.cheat and analysis is not None:
         apply_after_user_turn(pedagogy_state, float(analysis.get("depth_combined") or 0.0))
 
     await save_pedagogy(r, body.session_id, pedagogy_state)
 
-    if db_user and get_settings().skill_update_enabled:
+    if prepared.db_user and get_settings().skill_update_enabled:
         if (
-            not cheat
-            and not idle_turn
+            not prepared.cheat
+            and not prepared.idle_turn
             and body.action == "none"
-            and msg_stripped
+            and prepared.msg_stripped
             and analysis is not None
         ):
-            uid = db_user.id
-            ut = msg_stripped
+            uid = prepared.db_user.id
+            ut = prepared.msg_stripped
             an = dict(analysis)
             dl = int(pedagogy_state.difficulty_level)
 
@@ -402,12 +465,12 @@ async def chat(
             asyncio.create_task(_learning_bg())
 
     tree_hint = resolve_track_hint(state.topic, memory, body.message)
-    subj = canonical_subject_topic(msg_stripped)
+    subj = canonical_subject_topic(prepared.msg_stripped)
     if subj:
         tree_hint = f"{subj} {tree_hint}".strip()
     tree_hint = align_tree_hint_with_session_topic(tree_hint, state.topic)
     skill_tree = build_skill_tree_payload(
-        prev_skill, dict(memory.skill_status), track_hint=tree_hint, topic=state.topic
+        prepared.prev_skill, dict(memory.skill_status), track_hint=tree_hint, topic=state.topic
     )
 
     ut = state.user_type if state.user_type in ("lazy", "anxious", "thinker") else "lazy"
@@ -432,10 +495,10 @@ async def chat(
     )
 
     persisted_pair: tuple[int, int] | None = None
-    if db_user and active_conversation_id and not idle_turn:
+    if prepared.db_user and prepared.active_conversation_id and not prepared.idle_turn:
         user_line = (
-            msg_stripped
-            if body.action == "none" and msg_stripped
+            prepared.msg_stripped
+            if body.action == "none" and prepared.msg_stripped
             else _line_for_memory_update(body)
         )
         fallacy_payload: dict[str, Any] | None = None
@@ -447,9 +510,8 @@ async def chat(
                 "suggestion": analysis.get("suggestion"),
                 "depth_combined": analysis.get("depth_combined"),
             }
-        cid = active_conversation_id
-        uid = db_user.id
-        rep = reply
+        cid = prepared.active_conversation_id
+        uid = prepared.db_user.id
 
         def _persist_turn() -> tuple[int, int] | None:
             with SessionLocal() as db:
@@ -458,7 +520,7 @@ async def chat(
                     cid,
                     uid,
                     user_line,
-                    rep,
+                    reply,
                     fallacy_payload,
                     client_message_id=body.client_message_id,
                 )
@@ -485,6 +547,175 @@ async def chat(
         pedagogy=ped_out,
         persisted_user_message_id=persisted_pair[0] if persisted_pair else None,
         persisted_assistant_message_id=persisted_pair[1] if persisted_pair else None,
-        conversation_id=active_conversation_id,
+        conversation_id=prepared.active_conversation_id,
         session_key=body.session_id,
+    )
+
+
+def _guard_tutor_reply(reply: str, *, session_id: str, conversation_id: int | None, source: str) -> str:
+    text = str(reply or "").strip()
+    if not is_tutor_answering_for_student(text):
+        return text
+    log.warning(
+        "tutor reply blocked by route guard source=%s session_id=%s conversation_id=%s response=%r",
+        source,
+        session_id,
+        conversation_id,
+        text[:200],
+    )
+    return _SAFE_TUTOR_FALLBACK
+
+
+def _sync_last_assistant_reply(state: Any, original_reply: str, guarded_reply: str) -> None:
+    if original_reply == guarded_reply:
+        return
+    history = getattr(state, "history", None)
+    if not isinstance(history, list):
+        return
+    for item in reversed(history):
+        if not isinstance(item, dict):
+            continue
+        if item.get("role") != "assistant":
+            continue
+        if str(item.get("content") or "").strip() == str(original_reply or "").strip():
+            item["content"] = guarded_reply
+        return
+
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat(
+    body: ChatRequest,
+    r=Depends(redis_dep),
+    db_user: User | None = Depends(get_current_user_optional),
+):
+    prepared, duplicate = await _prepare_chat_turn(body, r, db_user)
+    if duplicate is not None:
+        return duplicate
+
+    fallacy_instr = ""
+    if prepared.analysis is not None:
+        fallacy_instr = build_fallacy_instruction(
+            _pedagogy_mode_str(prepared.pedagogy_state.mode),
+            prepared.analysis,
+        )
+
+    pctx = PedagogyTurnContext(
+        tutor_mode=_pedagogy_mode_str(prepared.pedagogy_state.mode),
+        difficulty_level=prepared.pedagogy_state.difficulty_level,
+        russian_only=prepared.russian_only,
+        fallacy_instruction=fallacy_instr,
+        persistent_profile=prepared.persistent_profile,
+    )
+
+    controller = TutorController(prepared.router)
+    try:
+        reply, mode = await controller.handle_turn(
+            prepared.state, body.message, body.action, prepared.memory, pedagogy=pctx
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    original_reply = reply
+    reply = _guard_tutor_reply(
+        reply,
+        session_id=body.session_id,
+        conversation_id=prepared.active_conversation_id,
+        source="chat",
+    )
+    _sync_last_assistant_reply(prepared.state, original_reply, reply)
+
+    return await _finalize_chat_turn(prepared, reply, mode)
+
+
+@router.post("/chat/message/stream")
+async def chat_message_stream(
+    body: ChatRequest,
+    http_request: Request,
+    r=Depends(redis_dep),
+    db_user: User | None = Depends(get_current_user_optional),
+):
+    prepared, duplicate = await _prepare_chat_turn(body, r, db_user)
+    if duplicate is not None:
+
+        async def _duplicate_stream() -> AsyncGenerator[str, None]:
+            yield _sse_event(
+                "meta",
+                {
+                    "conversation_id": duplicate.conversation_id,
+                    "session_key": duplicate.session_key,
+                },
+            )
+            yield _sse_event("done", duplicate.model_dump())
+
+        return StreamingResponse(_duplicate_stream(), media_type="text/event-stream")
+
+    fallacy_instr = ""
+    if prepared.analysis is not None:
+        fallacy_instr = build_fallacy_instruction(
+            _pedagogy_mode_str(prepared.pedagogy_state.mode),
+            prepared.analysis,
+        )
+
+    pctx = PedagogyTurnContext(
+        tutor_mode=_pedagogy_mode_str(prepared.pedagogy_state.mode),
+        difficulty_level=prepared.pedagogy_state.difficulty_level,
+        russian_only=prepared.russian_only,
+        fallacy_instruction=fallacy_instr,
+        persistent_profile=prepared.persistent_profile,
+    )
+
+    controller = TutorController(prepared.router)
+
+    async def _event_stream() -> AsyncGenerator[str, None]:
+        parts: list[str] = []
+        mode = prepared.state.mode
+        started = False
+        try:
+            yield _sse_event(
+                "meta",
+                {
+                    "conversation_id": prepared.active_conversation_id,
+                    "session_key": body.session_id,
+                },
+            )
+            async for chunk in controller.stream_turn(
+                prepared.state,
+                body.message,
+                body.action,
+                prepared.memory,
+                pedagogy=pctx,
+            ):
+                if await http_request.is_disconnected():
+                    raise asyncio.CancelledError()
+                mode = prepared.state.mode
+                if not chunk:
+                    continue
+                started = True
+                parts.append(chunk)
+                yield _sse_event("chunk", chunk)
+            original_reply = "".join(parts).strip() or "…"
+            reply = _guard_tutor_reply(
+                original_reply,
+                session_id=body.session_id,
+                conversation_id=prepared.active_conversation_id,
+                source="chat_stream",
+            )
+            _sync_last_assistant_reply(prepared.state, original_reply, reply)
+            response = await _finalize_chat_turn(prepared, reply, mode)
+            yield _sse_event("done", response.model_dump())
+        except asyncio.CancelledError:
+            log.info("chat stream cancelled session_id=%s conversation_id=%s", body.session_id, prepared.active_conversation_id)
+            raise
+        except Exception as e:
+            log.exception("chat stream failed")
+            if not started:
+                yield _sse_event("error", {"message": str(e)})
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )

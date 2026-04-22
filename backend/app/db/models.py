@@ -44,7 +44,11 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    avatar_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     role: Mapped[str] = mapped_column(String(32), default="user", nullable=False)
+    subscription_plan: Mapped[str] = mapped_column(String(32), default="free", nullable=False)
+    subscription_status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    subscription_current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -94,6 +98,16 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    created_topics: Mapped[list["Topic"]] = relationship(
+        "Topic",
+        back_populates="creator",
+        foreign_keys="Topic.created_by",
+    )
+    topic_progress: Mapped[list["UserTopicProgress"]] = relationship(
+        "UserTopicProgress",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class UserSettings(Base):
@@ -107,6 +121,7 @@ class UserSettings(Base):
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     has_seen_onboarding: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     show_typing_indicator: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    russian_only: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # Локальная / кастомная LLM (OpenAI-совместимый /v1/chat/completions). Пусто = OpenRouter из .env.
     llm_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     llm_api_key: Mapped[str | None] = mapped_column(Text(), nullable=True)
@@ -280,6 +295,50 @@ class Message(Base):
     )
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class Topic(Base):
+    __tablename__ = "topics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    initial_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    difficulty: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    tags: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
+    is_premium: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    usage_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    creator: Mapped["User"] = relationship("User", back_populates="created_topics", foreign_keys=[created_by])
+    progress_rows: Mapped[list["UserTopicProgress"]] = relationship(
+        "UserTopicProgress",
+        back_populates="topic",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserTopicProgress(Base):
+    __tablename__ = "user_topic_progress"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    topic_id: Mapped[int] = mapped_column(ForeignKey("topics.id", ondelete="CASCADE"), primary_key=True)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_used: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    user: Mapped["User"] = relationship("User", back_populates="topic_progress")
+    topic: Mapped["Topic"] = relationship("Topic", back_populates="progress_rows")
 
 
 class Skill(Base):

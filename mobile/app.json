@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Socrates AI",
+    "slug": "socrates-ai-mobile",
+    "scheme": "socratesai",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.socratesai.mobile"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "extra": {
+      "apiUrl": "http://127.0.0.1:8000",
+      "eas": {
+        "projectId": "1f7e45ab-bb26-43fb-9c89-148d415ad640"
+      }
+    }
+  }
+}

@@ -5,6 +5,7 @@ export function buildConnectionErrorHint() {
   const baseRaw = import.meta.env.VITE_API_URL;
   const base = typeof baseRaw === "string" ? baseRaw.trim() : "";
   const host = typeof window !== "undefined" ? window.location.hostname : "";
+  const protocol = typeof window !== "undefined" ? window.location.protocol : "";
   const fromLan = host !== "" && host !== "localhost" && host !== "127.0.0.1";
 
   const parts = [
@@ -12,6 +13,13 @@ export function buildConnectionErrorHint() {
     "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
     "Проверка на этой машине: curl -s http://127.0.0.1:8000/health",
   ];
+
+  if (base && protocol === "https:" && /^http:\/\//i.test(base)) {
+    parts.push(
+      "Страница открыта по HTTPS, а VITE_API_URL указывает на HTTP. Браузер блокирует такой mixed content.",
+      "Используй HTTPS для API или открывай фронт тоже по HTTP в dev-среде.",
+    );
+  }
 
   if (base && fromLan && /127\.0\.0\.1|localhost/.test(base)) {
     parts.push(

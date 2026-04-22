@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.models import GamificationProgress, User, UserSettings
 from app.services.learning_service import ensure_learning_rows
@@ -32,10 +33,16 @@ class TokenResponse(BaseModel):
 
 
 def _user_public(u: User) -> dict:
+    s = get_settings()
+    avatar_url = None
+    if u.avatar_path:
+        base = (s.public_api_url or "").strip().rstrip("/")
+        avatar_url = f"{base}/{u.avatar_path.lstrip('/')}" if base else f"/{u.avatar_path.lstrip('/')}"
     return {
         "id": u.id,
         "email": u.email,
         "full_name": u.full_name,
+        "avatar_url": avatar_url,
         "role": u.role,
         "is_active": u.is_active,
     }
@@ -63,6 +70,7 @@ def register(body: RegisterBody, db: Session = Depends(get_db)):
             notifications_enabled=True,
             has_seen_onboarding=False,
             show_typing_indicator=True,
+            russian_only=True,
         )
     )
     db.add(

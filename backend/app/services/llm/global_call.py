@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+from typing import Any, AsyncGenerator
 
 import httpx
 
@@ -131,6 +131,83 @@ async def chat_completion_global_async(
     except Exception as e:
         log.exception("OpenRouter failed: %s", e)
         return LLM_UNAVAILABLE
+
+
+async def _stream_with_fallback(
+    primary,
+    fallback_factory,
+) -> AsyncGenerator[str, None]:
+    yielded = False
+    try:
+        async for chunk in primary:
+            yielded = True
+            yield chunk
+        return
+    except Exception as e:
+        if yielded:
+            raise e
+        log.warning("Primary stream failed before first chunk: %s", e)
+
+    if fallback_factory is None:
+        yield LLM_UNAVAILABLE
+        return
+
+    try:
+        async for chunk in fallback_factory():
+            yielded = True
+            yield chunk
+    except Exception as e:
+        log.exception("Fallback stream failed: %s", e)
+        if not yielded:
+            yield LLM_UNAVAILABLE
+
+
+async def chat_completion_global_stream_async(
+    messages: list[dict[str, Any]],
+    *,
+    model: str,
+    temperature: float = 0.7,
+    max_tokens: int = 300,
+) -> AsyncGenerator[str, None]:
+    provider = get_effective_provider()
+    s = get_settings()
+    ollama_base = (s.ollama_base_url or "http://localhost:11434").rstrip("/")
+    fb = _openrouter_fallback_model()
+
+    if provider == "ollama":
+        op = OllamaProvider(ollama_base)
+
+        def _fallback() -> AsyncGenerator[str, None]:
+            return OpenRouterProvider().generate_stream(
+                messages,
+                model=fb,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+        async for chunk in _stream_with_fallback(
+            op.generate_stream(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ),
+            _fallback,
+        ):
+            yield chunk
+        return
+
+    orp = OpenRouterProvider()
+    async for chunk in _stream_with_fallback(
+        orp.generate_stream(
+            messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ),
+        None,
+    ):
+        yield chunk
 
 
 def chat_completion_global_sync(

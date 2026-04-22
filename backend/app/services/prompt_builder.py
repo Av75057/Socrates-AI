@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.tutor_prompt import build_tutor_system_prompt
+
 VALID_USER_TYPES = frozenset({"lazy", "anxious", "thinker"})
 
 
@@ -81,7 +83,7 @@ def difficulty_instruction(level: int) -> str:
 """.strip()
 
 
-def _history_to_text(history: list[dict[str, Any]], max_messages: int = 6) -> str:
+def _history_to_text(history: list[dict[str, Any]], max_messages: int = 10) -> str:
     lines: list[str] = []
     for h in history[-max_messages:]:
         if not isinstance(h, dict):
@@ -106,6 +108,7 @@ def build_prompt(
     *,
     tutor_mode: str = "friendly",
     difficulty_level: int = 1,
+    russian_only: bool = True,
     fallacy_instruction: str = "",
     persistent_profile: str = "",
 ) -> str:
@@ -116,8 +119,12 @@ def build_prompt(
 
 Тема: {topic_line}
 
-Язык и оформление (обязательно):
-- Пиши только по-русски. Не переходи на английский и не смешивай языки, если ученик явно не просит иной язык.
+{build_tutor_system_prompt(tutor_mode, difficulty_level)}
+
+Язык и оформление (обязательно, без исключений):
+- Всегда отвечай только по-русски.
+- Никогда не отвечай на английском или на другом языке, даже если пользователь пишет не по-русски или прямо просит другой язык.
+- Если пользователь пишет на другом языке, всё равно ответь только по-русски и, если нужно, коротко предложи продолжить по-русски.
 - Не используй эмодзи, «странные» Unicode-символы, псевдографику, математические готические буквы, Zalgo и прочие декоративные знаки.
 - Допустимы обычная кириллица, латиница только в устоявшихся терминах/формулах по теме, цифры и стандартная пунктуация.
 
@@ -129,6 +136,9 @@ def build_prompt(
 - Если ответ ученика слабый или он сомневается — начни с короткой поддержки
   (например: «Хорошая попытка», «Интересная мысль», «Ты почти у цели», «Давай уточним») — тоже по-русски.
 - Не дави; возвращай в диалог одним-двумя вопросами.
+"""
+    base += """
+- Не используй английские вводные слова, клише и связки вроде "sure", "okay", "let's", "however".
 """
 
     if mode == "question":
@@ -167,7 +177,7 @@ def build_prompt(
     mem = (memory_block or "").strip()
     mem_part = f"\n{mem}\n" if mem else ""
 
-    history_text = _history_to_text(history)
+    history_text = _history_to_text(history, max_messages=10)
     dialog_block = f"\nДиалог:\n{history_text}" if history_text else "\nДиалог: (пока пусто)"
 
     return (

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
-from typing import Any
+from typing import Any, AsyncGenerator
 
 import httpx
 
@@ -66,3 +67,43 @@ class OpenRouterProvider(BaseLLMProvider):
         msg = choices[0].get("message") or {}
         content = msg.get("content")
         return (content or "").strip() or "…"
+
+    async def generate_stream(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 300,
+    ) -> AsyncGenerator[str, None]:
+        if not self._api_key and "openrouter.ai" in self._api_url.lower():
+            raise ValueError("OPENROUTER_API_KEY is not set")
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        async with httpx.AsyncClient(timeout=self._timeout_s) as client:
+            async with client.stream("POST", self._api_url, json=payload, headers=self._headers()) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data = line[6:].strip()
+                    if not data or data == "[DONE]":
+                        if data == "[DONE]":
+                            break
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    content = delta.get("content")
+                    if isinstance(content, str) and content:
+                        yield content

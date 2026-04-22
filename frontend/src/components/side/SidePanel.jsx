@@ -4,7 +4,7 @@ import TutorAvatar from "../TutorAvatar.jsx";
 import UserMemoryPanel from "../UserMemoryPanel.jsx";
 import SkillTree from "../SkillTree.jsx";
 import ThinkingPanel from "../ThinkingPanel.jsx";
-import { MAX_STEPS, wisdomPointsToProgressSteps } from "../../constants/progress.js";
+import { MAX_STEPS, WISDOM_PER_LEVEL } from "../../constants/progress.js";
 import { XP_PER_ATTEMPT } from "../../store/useChatStore.js";
 import { getThinkingLevel } from "../../utils/feedbackHeuristics.js";
 import { skillTreeTopicMismatch } from "../../utils/subjectTrack.js";
@@ -104,7 +104,9 @@ export default function SidePanel({
 }) {
   const wisdomLevel = Math.max(1, Number(gamificationPublic?.level) || 1);
   const wisdomPoints = Math.max(0, Number(gamificationPublic?.wisdom_points) || 0);
-  const barSteps = accountGamification ? wisdomPointsToProgressSteps(wisdomPoints) : attempts;
+  const wisdomProgress = wisdomPoints % WISDOM_PER_LEVEL;
+  const wisdomToNextLevel = WISDOM_PER_LEVEL - wisdomProgress || WISDOM_PER_LEVEL;
+  const barSteps = accountGamification ? wisdomProgress : attempts;
   const level = accountGamification
     ? { key: `wisdom-${wisdomLevel}`, label: `Уровень мудрости ${wisdomLevel}` }
     : getThinkingLevel(attempts);
@@ -142,7 +144,14 @@ export default function SidePanel({
         attempts={barSteps}
         pulseKey={pulseKey}
         label={accountGamification ? "Прогресс уровня" : "Прогресс"}
+        max={accountGamification ? WISDOM_PER_LEVEL : MAX_STEPS}
+        valueLabel={accountGamification ? `${wisdomProgress}/${WISDOM_PER_LEVEL}` : null}
       />
+      {accountGamification ? (
+        <p className="-mt-2 text-right text-[11px] text-slate-500 dark:text-slate-400">
+          До следующего уровня: {wisdomToNextLevel} WP
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-xl border border-slate-200 bg-white/80 p-3 text-center dark:border-slate-700/50 dark:bg-slate-900/40">

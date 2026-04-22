@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -55,6 +56,26 @@ def _share_frontend_base() -> str:
     return u or "http://localhost:5173"
 
 
+def _avatar_url(path: str | None) -> str | None:
+    if not path:
+        return None
+    s = get_settings()
+    rel = f"/{path.lstrip('/')}"
+    base = (s.public_api_url or "").strip().rstrip("/")
+    return f"{base}{rel}" if base else rel
+
+
+def _profile_out(user: User) -> ProfileOut:
+    return ProfileOut(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        avatar_url=_avatar_url(user.avatar_path),
+        role=user.role,
+        is_active=user.is_active,
+    )
+
+
 def _normalize_llm_base_url(url: str | None) -> str | None:
     if url is None:
         return None
@@ -77,6 +98,7 @@ def _settings_to_out(s: UserSettings) -> SettingsOut:
         notifications_enabled=s.notifications_enabled,
         has_seen_onboarding=bool(s.has_seen_onboarding),
         show_typing_indicator=bool(s.show_typing_indicator),
+        russian_only=bool(s.russian_only),
         llm_base_url=(s.llm_base_url or "").strip() or None,
         llm_model_name=(s.llm_model_name or "").strip() or None,
         llm_api_key_set=key_set,
@@ -102,6 +124,7 @@ class ProfileOut(BaseModel):
     id: int
     email: str
     full_name: str | None
+    avatar_url: str | None = None
     role: str
     is_active: bool
 
@@ -116,6 +139,7 @@ class SettingsOut(BaseModel):
     notifications_enabled: bool
     has_seen_onboarding: bool
     show_typing_indicator: bool
+    russian_only: bool = True
     llm_base_url: str | None = None
     llm_model_name: str | None = None
     llm_api_key_set: bool = False
@@ -127,6 +151,7 @@ class SettingsUpdate(BaseModel):
     notifications_enabled: bool | None = None
     has_seen_onboarding: bool | None = None
     show_typing_indicator: bool | None = None
+    russian_only: bool | None = None
     llm_base_url: str | None = None
     llm_model_name: str | None = None
     llm_api_key: str | None = None  # None = не менять; "" = очистить
@@ -211,6 +236,17 @@ class PublishConversationOut(BaseModel):
     slug: str
     share_url: str
     preview_card_url: str
+
+
+class AvatarUploadOut(BaseModel):
+    avatar_url: str
+
+
+class SubscriptionOut(BaseModel):
+    plan: str
+    status: str
+    is_pro: bool
+    current_period_end: str | None = None
 
 
 @router.get("/me/memory-profile")
@@ -319,13 +355,7 @@ def get_my_assignment(
 
 @router.get("/me", response_model=ProfileOut)
 def get_me(user: User = Depends(get_current_user)):
-    return ProfileOut(
-        id=user.id,
-        email=user.email,
-        full_name=user.full_name,
-        role=user.role,
-        is_active=user.is_active,
-    )
+    return _profile_out(user)
 
 
 @router.put("/me", response_model=ProfileOut)
@@ -334,12 +364,77 @@ def update_me(body: ProfileUpdate, user: User = Depends(get_current_user), db: S
         user.full_name = body.full_name
     db.commit()
     db.refresh(user)
-    return ProfileOut(
-        id=user.id,
-        email=user.email,
-        full_name=user.full_name,
-        role=user.role,
-        is_active=user.is_active,
+    return _profile_out(user)
+
+
+@router.post("/me/avatar", response_model=AvatarUploadOut)
+async def upload_my_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    content_type = (file.content_type or "").lower()
+    ext_by_type = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+    }
+    ext = ext_by_type.get(content_type)
+    if ext is None:
+        raise HTTPException(status_code=400, detail="Поддерживаются только JPG, PNG, WEBP и GIF")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Максимальный размер файла — 5 MB")
+
+    uploads_root = Path(get_settings().uploads_dir).resolve()
+    avatar_dir = uploads_root / "avatars"
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"user-{user.id}-{uuid.uuid4().hex}{ext}"
+    dest = avatar_dir / filename
+    dest.write_bytes(data)
+
+    if user.avatar_path:
+        old_abs = uploads_root / "avatars" / Path(user.avatar_path).name
+        if old_abs.exists():
+            try:
+                old_abs.unlink()
+            except OSError:
+                log.warning("Could not delete previous avatar for user_id=%s path=%s", user.id, old_abs)
+
+    user.avatar_path = f"uploads/avatars/{filename}"
+    db.commit()
+    db.refresh(user)
+    return AvatarUploadOut(avatar_url=_avatar_url(user.avatar_path) or "")
+
+
+@router.delete("/me/avatar", status_code=status.HTTP_204_NO_CONTENT)
+def delete_my_avatar(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.avatar_path:
+        uploads_root = Path(get_settings().uploads_dir).resolve()
+        try:
+            old_abs = uploads_root / "avatars" / Path(user.avatar_path).name
+            if old_abs.exists():
+                old_abs.unlink()
+        except OSError:
+            log.warning("Could not remove avatar for user_id=%s path=%s", user.id, user.avatar_path)
+    user.avatar_path = None
+    db.commit()
+
+
+@router.get("/me/subscription", response_model=SubscriptionOut)
+def get_my_subscription(user: User = Depends(get_current_user)):
+    plan = (user.subscription_plan or "free").strip().lower() or "free"
+    status_value = (user.subscription_status or "active").strip().lower() or "active"
+    return SubscriptionOut(
+        plan=plan,
+        status=status_value,
+        is_pro=plan in {"pro", "yearly", "team"},
+        current_period_end=user.subscription_current_period_end.isoformat()
+        if user.subscription_current_period_end
+        else None,
     )
 
 
@@ -358,6 +453,7 @@ def get_settings_me(user: User = Depends(get_current_user), db: Session = Depend
             notifications_enabled=True,
             has_seen_onboarding=False,
             show_typing_indicator=True,
+            russian_only=True,
         )
         db.add(s)
         db.commit()
@@ -380,6 +476,7 @@ def update_settings_me(
             notifications_enabled=True,
             has_seen_onboarding=False,
             show_typing_indicator=True,
+            russian_only=True,
         )
         db.add(s)
         db.flush()
@@ -397,6 +494,8 @@ def update_settings_me(
         s.has_seen_onboarding = body.has_seen_onboarding
     if body.show_typing_indicator is not None:
         s.show_typing_indicator = body.show_typing_indicator
+    if body.russian_only is not None:
+        s.russian_only = body.russian_only
     if body.llm_base_url is not None:
         n = _normalize_llm_base_url(body.llm_base_url)
         s.llm_base_url = n if n else None

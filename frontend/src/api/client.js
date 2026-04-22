@@ -1,4 +1,5 @@
 import { apiUrl } from "../config/api.js";
+import { buildConnectionErrorHint } from "../utils/connectionErrorHint.js";
 
 const TOKEN_KEY = "socrates_access_token";
 
@@ -27,5 +28,10 @@ export async function apiFetch(path, options = {}) {
   }
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  return fetch(apiUrl(path), { ...options, headers });
+  try {
+    return await fetch(apiUrl(path), { ...options, headers });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "NetworkError when attempting to fetch resource.";
+    throw new Error(`${message} ${buildConnectionErrorHint()}`.trim());
+  }
 }

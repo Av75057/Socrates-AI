@@ -4,6 +4,10 @@ import { Pencil, Trash2 } from "lucide-react";
 import { formatMessageTime } from "../utils/timeAgo.js";
 import { parseDbMessageId } from "../utils/messageId.js";
 
+function normalizeDisplayedText(text) {
+  return String(text || "").replace(/\\cdot/g, "×").replace(/\\times/g, "×");
+}
+
 function UserAvatar({ label }) {
   const ch = (label || "?").trim().slice(0, 2).toUpperCase();
   return (
@@ -36,10 +40,12 @@ export default function ChatMessage({
   canEdit = false,
   onEdit,
   onDelete,
+  streaming = false,
 }) {
   const isUser = role === "user";
+  const displayText = normalizeDisplayedText(text);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(text);
+  const [draft, setDraft] = useState(displayText);
   const dbId = parseDbMessageId(messageId);
   const showActions = canEdit && dbId != null && isUser && !editing;
 
@@ -83,7 +89,7 @@ export default function ChatMessage({
                 type="button"
                 title="Редактировать"
                 onClick={() => {
-                  setDraft(text);
+                  setDraft(displayText);
                   setEditing(true);
                 }}
                 className="rounded-md bg-white/90 p-1 text-slate-600 shadow dark:bg-slate-800 dark:text-slate-300"
@@ -124,7 +130,7 @@ export default function ChatMessage({
                 <button
                   type="button"
                   onClick={() => {
-                    setDraft(text);
+                    setDraft(displayText);
                     setEditing(false);
                   }}
                   className="rounded-lg px-3 py-1 text-xs text-white/90"
@@ -134,7 +140,10 @@ export default function ChatMessage({
               </div>
             </div>
           ) : (
-            <div className="whitespace-pre-wrap break-words">{text}</div>
+            <div className="whitespace-pre-wrap break-words">
+              {displayText}
+              {streaming && !isUser ? <span className="blinking-cursor" aria-hidden>|</span> : null}
+            </div>
           )}
         </div>
         {createdAt ? (

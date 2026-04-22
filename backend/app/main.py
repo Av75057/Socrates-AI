@@ -8,6 +8,7 @@ from alembic import command
 from alembic.config import Config
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -16,7 +17,7 @@ from slowapi import _rate_limit_exceeded_handler
 
 from app.config import get_settings
 from app.limiter_instance import limiter
-from app.routes import admin, auth, chat, educator, gamification, pedagogy, public_sharing, users
+from app.routes import admin, admin_topics, auth, chat, educator, gamification, pedagogy, public_sharing, topics, users
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ def _run_alembic_upgrade_if_sqlite() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _run_alembic_upgrade_if_sqlite()
+    uploads_dir = Path(get_settings().uploads_dir).resolve()
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    (uploads_dir / "avatars").mkdir(parents=True, exist_ok=True)
     yield
 
 
@@ -61,11 +65,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+uploads_dir = Path(settings.uploads_dir).resolve()
+uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
+
 app.include_router(auth.router)
 app.include_router(public_sharing.router)
 app.include_router(users.router)
 app.include_router(admin.router)
+app.include_router(admin_topics.router)
 app.include_router(educator.router)
+app.include_router(topics.router)
 app.include_router(chat.router, tags=["chat"])
 app.include_router(gamification.router, prefix="/gamification", tags=["gamification"])
 app.include_router(pedagogy.router, prefix="/pedagogy", tags=["pedagogy"])

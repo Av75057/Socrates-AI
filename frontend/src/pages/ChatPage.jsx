@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import ChatWindow from "../components/ChatWindow.jsx";
 import InputBox from "../components/InputBox.jsx";
 import ModeIndicator from "../components/ModeIndicator.jsx";
@@ -65,6 +65,9 @@ import { bumpUxMetric, recordProfileTime, resetProfileClock } from "../utils/uxM
 import { parseDbMessageId } from "../utils/messageId.js";
 import OnboardingTour from "../components/OnboardingTour.jsx";
 import ConversationList from "../components/chat/ConversationList.jsx";
+import { useSSE } from "../hooks/useSSE.js";
+import TopicCard from "../components/topics/TopicCard.jsx";
+import { listTopics, startTopic } from "../api/topicsApi.js";
 
 function messagesFromNewConversation(c) {
   const t = (c.opening_message || "").trim();
@@ -82,7 +85,57 @@ function messagesFromNewConversation(c) {
   ];
 }
 
-async function postChat(
+function messagesFromTopicStart(data) {
+  const t = (data.opening_message || data.first_message || "").trim();
+  if (!t) return [];
+  return [
+    {
+      id:
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `topic_${data.conversation_id}_${Date.now()}`,
+      role: "assistant",
+      text: t,
+      createdAt: Date.now(),
+    },
+  ];
+}
+
+function PremiumTopicsModal({ open, onClose }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4">
+      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-600 dark:text-amber-300">
+          Premium-тема
+        </p>
+        <h2 className="mt-3 font-display text-2xl font-bold text-slate-950 dark:text-white">
+          Для этой темы нужен Pro
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+          Открой premium-библиотеку тем и расширенные сценарии обсуждений.
+        </p>
+        <div className="mt-6 flex gap-3">
+          <Link
+            to="/pricing"
+            className="inline-flex flex-1 items-center justify-center rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-medium text-amber-950 hover:bg-amber-400"
+          >
+            Перейти к Pro
+          </Link>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Закрыть
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildChatPayload(
   sessionId,
   message,
   action,
@@ -99,9 +152,29 @@ async function postChat(
   if (conversationId != null) payload.conversation_id = conversationId;
   if (clientMessageId) payload.client_message_id = clientMessageId;
   if (assignmentId != null) payload.assignment_id = assignmentId;
+  return payload;
+}
+
+async function postChat(
+  sessionId,
+  message,
+  action,
+  conversationId,
+  clientMessageId = null,
+  assignmentId = null,
+) {
   const res = await apiFetch("/chat", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(
+      buildChatPayload(
+        sessionId,
+        message,
+        action,
+        conversationId,
+        clientMessageId,
+        assignmentId,
+      ),
+    ),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -191,6 +264,7 @@ function deriveAvatarMood({ microFeedback, feedback, simplerBanner }) {
 }
 
 export default function ChatPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user: authUser } = useAuth();
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
@@ -216,6 +290,7 @@ export default function ChatPage() {
   const addMessage = useChatStore((s) => s.addMessage);
   const patchLastExchangeMessageIds = useChatStore((s) => s.patchLastExchangeMessageIds);
   const updateMessageText = useChatStore((s) => s.updateMessageText);
+  const updateMessageMeta = useChatStore((s) => s.updateMessageMeta);
   const removeMessagesFromId = useChatStore((s) => s.removeMessagesFromId);
   const setLoading = useChatStore((s) => s.setLoading);
   const canSend = useChatStore((s) => s.canSend);
@@ -247,12 +322,20 @@ export default function ChatPage() {
   const [conversationItems, setConversationItems] = useState([]);
   const [conversationListLoading, setConversationListLoading] = useState(false);
   const [assignmentBanner, setAssignmentBanner] = useState(null);
+  const [topicSuggestions, setTopicSuggestions] = useState([]);
+  const [topicSuggestionsLoading, setTopicSuggestionsLoading] = useState(false);
+  const [topicUpgradeOpen, setTopicUpgradeOpen] = useState(false);
+  const [startingTopicId, setStartingTopicId] = useState(null);
   const [saveStatus, setSaveStatus] = useState(() => {
     const pending = pendingTurnsForSession(useChatStore.getState().sessionId).length;
     return pending > 0 ? { kind: "queued", text: `Локально сохранено: ${pending}` } : null;
   });
   const chatScrollRef = useRef(null);
   const syncQueueRef = useRef(false);
+  const streamingMessageIdRef = useRef(null);
+  const streamRequestIdRef = useRef(0);
+  const streamStartedRef = useRef(false);
+  const { send: sendStream, cancel: cancelStream, streaming: streamInFlight } = useSSE("/api/chat/message/stream");
 
   const lastActivityRef = useRef(Date.now());
 
@@ -328,6 +411,8 @@ export default function ChatPage() {
     document.body.classList.add("chat-route-lock");
     return () => document.body.classList.remove("chat-route-lock");
   }, []);
+
+  useEffect(() => () => cancelStream(), [cancelStream]);
 
   useEffect(() => {
     const onLeave = () => bumpUxMetric("tabAway");
@@ -480,6 +565,24 @@ export default function ChatPage() {
     };
   }, [conversationId, sessionId, authUser?.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setTopicSuggestionsLoading(true);
+    listTopics({ limit: 4, offset: 0, sort: "popular" })
+      .then((data) => {
+        if (!cancelled) setTopicSuggestions(Array.isArray(data?.items) ? data.items : []);
+      })
+      .catch(() => {
+        if (!cancelled) setTopicSuggestions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTopicSuggestionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.id]);
+
   /** После F5 или по ?conversation=: подтянуть сообщения выбранного диалога. */
   useEffect(() => {
     if (!authUser) return;
@@ -602,6 +705,13 @@ export default function ChatPage() {
     [setActiveConversation],
   );
 
+  const clearStreamingPlaceholder = useCallback(() => {
+    if (!streamingMessageIdRef.current) return;
+    removeMessagesFromId(streamingMessageIdRef.current);
+    streamingMessageIdRef.current = null;
+    streamStartedRef.current = false;
+  }, [removeMessagesFromId]);
+
   const executeTurn = useCallback(
     async (turn, { fromQueue = false } = {}) => {
       const trimmed = (turn.message || "").trim();
@@ -609,6 +719,13 @@ export default function ChatPage() {
       const effectiveConversationId =
         turn.conversationId ?? useChatStore.getState().conversationId;
       const attemptsBefore = useChatStore.getState().attempts;
+      const requestId = streamRequestIdRef.current + 1;
+      streamRequestIdRef.current = requestId;
+
+      if (!fromQueue) {
+        cancelStream();
+        clearStreamingPlaceholder();
+      }
 
       setLoading(true);
       setSaveStatus({
@@ -616,7 +733,7 @@ export default function ChatPage() {
         text: fromQueue ? "Синхронизирую…" : "Сохраняю…",
       });
       try {
-        const data = await postChat(
+        const payload = buildChatPayload(
           effectiveSessionId,
           trimmed,
           turn.action,
@@ -624,10 +741,55 @@ export default function ChatPage() {
           turn.clientMessageId,
           turn.assignmentId,
         );
+        const data = fromQueue
+          ? await postChat(
+              effectiveSessionId,
+              trimmed,
+              turn.action,
+              effectiveConversationId,
+              turn.clientMessageId,
+              turn.assignmentId,
+            )
+          : await sendStream(payload, {
+              onMeta: (meta) => {
+                if (requestId !== streamRequestIdRef.current) return;
+                if (meta?.conversation_id != null && meta?.session_key) {
+                  bindConversation(meta.conversation_id, meta.session_key);
+                }
+              },
+              onChunk: (chunk) => {
+                if (requestId !== streamRequestIdRef.current || typeof chunk !== "string") return;
+                if (!streamingMessageIdRef.current) {
+                  streamingMessageIdRef.current = addMessage("assistant", chunk, {
+                    streaming: true,
+                  });
+                } else {
+                  const current = useChatStore
+                    .getState()
+                    .messages.find((m) => m.id === streamingMessageIdRef.current);
+                  updateMessageText(
+                    streamingMessageIdRef.current,
+                    `${current?.text || ""}${chunk}`,
+                  );
+                }
+                streamStartedRef.current = true;
+              },
+            });
+        if (!data) {
+          throw new Error("Streaming completed without a final payload.");
+        }
+        if (!fromQueue && requestId !== streamRequestIdRef.current) {
+          return null;
+        }
         if (data.conversation_id != null && data.session_key) {
           bindConversation(data.conversation_id, data.session_key);
         }
-        addMessage("assistant", data.reply);
+        if (streamingMessageIdRef.current) {
+          updateMessageText(streamingMessageIdRef.current, data.reply);
+          updateMessageMeta(streamingMessageIdRef.current, { streaming: false });
+        } else {
+          addMessage("assistant", data.reply);
+        }
         setFromServer(data);
         if (
           data.persisted_user_message_id != null &&
@@ -638,6 +800,8 @@ export default function ChatPage() {
             assistantId: data.persisted_assistant_message_id,
           });
         }
+        streamingMessageIdRef.current = null;
+        streamStartedRef.current = false;
         removePendingTurn(turn.clientMessageId);
 
         if (data.pedagogy) {
@@ -732,6 +896,12 @@ export default function ChatPage() {
         );
         return data;
       } catch (e) {
+        if (e?.name === "AbortError") {
+          if (requestId === streamRequestIdRef.current) {
+            clearStreamingPlaceholder();
+          }
+          return null;
+        }
         if (e instanceof TypeError) {
           if (!fromQueue) {
             enqueuePendingTurn({
@@ -750,28 +920,44 @@ export default function ChatPage() {
             kind: "queued",
             text: `Жду сеть. В очереди: ${pendingTurnsForSession(effectiveSessionId).length}`,
           });
+          if (requestId === streamRequestIdRef.current) {
+            clearStreamingPlaceholder();
+          }
           return null;
         }
         const msg = e instanceof Error ? e.message : "Ошибка сервера";
-        if (!fromQueue) {
+        if (requestId === streamRequestIdRef.current) {
+          clearStreamingPlaceholder();
+        }
+        if (!fromQueue && requestId === streamRequestIdRef.current) {
           addMessage("assistant", `Ошибка: ${msg}`);
         }
-        setSaveStatus({ kind: "error", text: "Не сохранено" });
+        if (requestId === streamRequestIdRef.current) {
+          setSaveStatus({ kind: "error", text: "Не сохранено" });
+        }
         return null;
       } finally {
-        setLoading(false);
+        if (requestId === streamRequestIdRef.current) {
+          streamStartedRef.current = false;
+          setLoading(false);
+        }
       }
     },
     [
       addMessage,
       authUser,
       bindConversation,
+      cancelStream,
+      clearStreamingPlaceholder,
       patchLastExchangeMessageIds,
       pushGamToast,
       recordTurnOutcome,
       refreshRecommendation,
       setFromServer,
       setLoading,
+      sendStream,
+      updateMessageMeta,
+      updateMessageText,
     ],
   );
 
@@ -936,6 +1122,48 @@ export default function ChatPage() {
     }
   }, [recommendation, refreshRecommendation, setActiveConversation, setSearchParams]);
 
+  const handleStartTopic = useCallback(
+    async (topic) => {
+      if (!authUser) {
+        navigate("/login", { state: { from: "/app" } });
+        return;
+      }
+      if (topic.is_premium && !topic.can_start) {
+        setTopicUpgradeOpen(true);
+        return;
+      }
+      setStartingTopicId(topic.id);
+      try {
+        const started = await startTopic(topic.id);
+        const next = new URLSearchParams(searchParams);
+        next.set("conversation", String(started.conversation_id));
+        setSearchParams(next);
+        setFeedback(null);
+        setMicroFeedback(null);
+        setSimplerBanner(false);
+        setIdleHint(false);
+        setFallacyNotice(null);
+        resetProfileClock();
+        setActiveConversation(
+          started.conversation_id,
+          started.session_key,
+          messagesFromTopicStart(started),
+        );
+        void postGamificationAction(started.session_key, "new_dialog", {});
+        await refreshRecommendation();
+      } catch (e) {
+        if (e?.status === 402) {
+          setTopicUpgradeOpen(true);
+        } else {
+          alert(e instanceof Error ? e.message : "Не удалось начать тему");
+        }
+      } finally {
+        setStartingTopicId(null);
+      }
+    },
+    [authUser, navigate, refreshRecommendation, searchParams, setActiveConversation, setSearchParams],
+  );
+
   const dismissPedagogyIntro = useCallback(() => {
     localStorage.setItem("socrates_pedagogy_intro_v1", "1");
     setPedagogyIntro(false);
@@ -994,6 +1222,7 @@ export default function ChatPage() {
 
   return (
     <div className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-slate-100 font-sans text-slate-900 dark:bg-[#0f172a] dark:text-slate-100">
+      <PremiumTopicsModal open={topicUpgradeOpen} onClose={() => setTopicUpgradeOpen(false)} />
       <GamificationToastHost items={gamToasts} onDismiss={dismissGamToast} />
       <AchievementsModal
         open={achOpen}
@@ -1092,6 +1321,44 @@ export default function ChatPage() {
           />
         </div>
       ) : null}
+      <div className="mx-4 mt-3 rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/45">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700 dark:text-cyan-300">
+              Популярные темы
+            </p>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              Быстрый старт для осмысленного разговора, если не хочется придумывать тему с нуля.
+            </p>
+          </div>
+          <Link to="/topics" className="text-sm font-medium text-cyan-700 underline dark:text-cyan-400">
+            Вся библиотека
+          </Link>
+        </div>
+        {topicSuggestionsLoading ? (
+          <div className="mt-4 grid gap-3 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="h-48 animate-pulse rounded-3xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40"
+              />
+            ))}
+          </div>
+        ) : topicSuggestions.length > 0 ? (
+          <div className="mt-4 grid gap-3 lg:grid-cols-4">
+            {topicSuggestions.map((topic) => (
+              <TopicCard
+                key={topic.id}
+                topic={topic}
+                compact
+                starting={startingTopicId === topic.id}
+                onStart={handleStartTopic}
+                onOpen={() => navigate("/topics")}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
       {authUser ? (
         <div className="mx-4 mt-2 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 dark:text-slate-400">
           <Link to="/profile" className="text-cyan-700 hover:underline dark:text-cyan-400">
@@ -1100,9 +1367,17 @@ export default function ChatPage() {
           <Link to="/profile/history" className="text-cyan-700 hover:underline dark:text-cyan-400">
             История
           </Link>
+          <Link to="/topics" className="text-cyan-700 hover:underline dark:text-cyan-400">
+            Темы
+          </Link>
           {String(authUser.role || "").toLowerCase() === "admin" ? (
             <Link to="/admin" className="text-amber-700 hover:underline dark:text-amber-400">
               Админ-панель
+            </Link>
+          ) : null}
+          {["admin", "educator"].includes(String(authUser.role || "").toLowerCase()) ? (
+            <Link to="/admin/topics" className="text-amber-700 hover:underline dark:text-amber-400">
+              Управление темами
             </Link>
           ) : null}
           <button
@@ -1152,7 +1427,7 @@ export default function ChatPage() {
             canEditMessages={!!authUser}
             onEditMessage={handleEditMessage}
             onDeleteMessage={handleDeleteMessage}
-            showTypingIndicator={showTypingFromSettings}
+            showTypingIndicator={showTypingFromSettings && !streamStartedRef.current}
             onIdleHintDismiss={() => {
               setIdleHint(false);
               bumpActivity();
@@ -1162,6 +1437,7 @@ export default function ChatPage() {
             userType={userType}
             onSend={onSend}
             loading={loading}
+            interruptibleLoading={streamInFlight}
             canSend={canSend}
             onRequestHint={onRequestHint}
             onRequestExample={onRequestExample}

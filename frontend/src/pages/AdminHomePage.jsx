@@ -42,6 +42,17 @@ export default function AdminHomePage() {
             </span>
           </Link>
         </li>
+        <li>
+          <Link
+            to="/admin/topics"
+            className="block rounded-xl border border-emerald-500/45 bg-emerald-50 px-6 py-5 font-medium text-emerald-950 transition hover:border-emerald-600 dark:border-emerald-700/40 dark:bg-emerald-950/25 dark:text-emerald-100 dark:hover:border-emerald-500/50"
+          >
+            Темы для обсуждения
+            <span className="mt-1 block text-xs font-normal text-emerald-800 dark:text-emerald-200/70">
+              Библиотека, premium, AI-черновики
+            </span>
+          </Link>
+        </li>
       </ul>
       <p className="mt-10 text-sm">
         <Link to="/app" className="text-slate-600 underline hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-300">

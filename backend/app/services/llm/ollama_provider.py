@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+import json
+from typing import Any, AsyncGenerator
 
 import httpx
 
@@ -37,3 +38,38 @@ class OllamaProvider(BaseLLMProvider):
         msg = data.get("message") or {}
         content = msg.get("content")
         return (content or "").strip() or "…"
+
+    async def generate_stream(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 300,
+    ) -> AsyncGenerator[str, None]:
+        url = f"{self._base_url}/api/chat"
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
+        }
+        async with httpx.AsyncClient(timeout=self._timeout_s) as client:
+            async with client.stream("POST", url, json=payload) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    message = data.get("message") or {}
+                    content = message.get("content")
+                    if isinstance(content, str) and content:
+                        yield content
+                    if data.get("done"):
+                        break

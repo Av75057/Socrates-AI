@@ -1,15 +1,23 @@
 import { motion } from "framer-motion";
 import { MAX_STEPS } from "../constants/progress.js";
 
-export default function AnimatedProgressBar({ attempts, pulseKey, label = "Прогресс" }) {
-  const pct = Math.min(100, (Math.min(Math.max(attempts, 0), MAX_STEPS) / MAX_STEPS) * 100);
+export default function AnimatedProgressBar({
+  attempts,
+  pulseKey,
+  label = "Прогресс",
+  max = MAX_STEPS,
+  valueLabel = null,
+}) {
+  const safeMax = Math.max(1, Number(max) || MAX_STEPS);
+  const safeValue = Math.min(Math.max(Number(attempts) || 0, 0), safeMax);
+  const pct = Math.min(100, (safeValue / safeMax) * 100);
 
   return (
     <div className="w-full">
       <div className="mb-1 flex justify-between text-[11px] text-slate-600 dark:text-slate-500">
         <span>{label}</span>
         <span className="tabular-nums text-slate-500 dark:text-slate-400">
-          {Math.min(attempts, MAX_STEPS)}/{MAX_STEPS}
+          {valueLabel || `${safeValue}/${safeMax}`}
         </span>
       </div>
       <div className="relative h-3 overflow-hidden rounded-full bg-slate-200 ring-1 ring-slate-300 dark:bg-slate-800/90 dark:ring-slate-700/50">

@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [tutorMode, setTutorMode] = useState("friendly");
   const [notifications, setNotifications] = useState(true);
   const [showTypingIndicator, setShowTypingIndicator] = useState(true);
+  const [russianOnly, setRussianOnly] = useState(true);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
@@ -41,6 +42,7 @@ export default function SettingsPage() {
         setTutorMode(s.tutor_mode || "friendly");
         setNotifications(!!s.notifications_enabled);
         setShowTypingIndicator(s.show_typing_indicator !== false);
+        setRussianOnly(s.russian_only !== false);
         setLlmBaseUrl(s.llm_base_url || "http://127.0.0.1:8000/v1");
         setLlmModelName(s.llm_model_name || "");
         setLlmApiKeySet(!!s.llm_api_key_set);
@@ -66,6 +68,7 @@ export default function SettingsPage() {
         theme,
         notifications_enabled: notifications,
         show_typing_indicator: showTypingIndicator,
+        russian_only: russianOnly,
         llm_base_url: llmBaseUrl.trim() || null,
         llm_model_name: llmModelName.trim() || null,
       };
@@ -181,6 +184,15 @@ export default function SettingsPage() {
             className="rounded border-slate-400 dark:border-slate-600"
           />
           Показывать индикатор печати тьютора
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={russianOnly}
+            onChange={(e) => setRussianOnly(e.target.checked)}
+            className="rounded border-slate-400 dark:border-slate-600"
+          />
+          Жёстко отвечать только по-русски
         </label>
 
         <div className="border-t border-slate-200 pt-6 dark:border-slate-700">

@@ -8,6 +8,11 @@ _HARSH = re.compile(
 )
 
 
+def normalize_response_text(response: str) -> str:
+    text = str(response or "")
+    return text.replace("\\cdot", "×").replace("\\times", "×")
+
+
 def validate_response(response: str, mode: str) -> bool:
     if len(response) > 500:
         return False
