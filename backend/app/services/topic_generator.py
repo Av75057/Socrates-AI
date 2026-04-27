@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import json
-import re
 from typing import Any
 
-from app.services.llm.global_call import chat_completion_global_async
 from app.services.model_router import ModelRouter
 
 
@@ -23,27 +20,6 @@ _GENERATOR_SYSTEM_PROMPT = """Ты редактор библиотеки тем 
 - Не пиши ответы за ученика.
 - Не используй markdown и пояснения вокруг JSON.
 """
-
-
-def _extract_json_object(text: str) -> dict[str, Any]:
-    raw = (text or "").strip()
-    if not raw:
-        return {}
-    try:
-        parsed = json.loads(raw)
-        return parsed if isinstance(parsed, dict) else {}
-    except json.JSONDecodeError:
-        pass
-    match = re.search(r"\{[\s\S]*\}", raw)
-    if not match:
-        return {}
-    try:
-        parsed = json.loads(match.group())
-        return parsed if isinstance(parsed, dict) else {}
-    except json.JSONDecodeError:
-        return {}
-
-
 def _normalize_tags(raw: Any) -> list[str]:
     items = raw if isinstance(raw, list) else []
     out: list[str] = []
@@ -61,13 +37,15 @@ async def generate_topic_draft(seed: str) -> dict[str, Any]:
     mr = ModelRouter()
     model = mr.select_model("question")
     user_prompt = f"Сгенерируй тему для библиотеки: {seed.strip()}"
-    raw = await chat_completion_global_async(
-        [{"role": "system", "content": _GENERATOR_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}],
-        model=model,
-        temperature=0.7,
-        max_tokens=500,
-    )
-    data = _extract_json_object(raw)
+    try:
+        data = await mr.call_model_json(
+            [{"role": "system", "content": _GENERATOR_SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}],
+            model,
+            temperature=0.7,
+            max_tokens=500,
+        )
+    except Exception:
+        data = {}
     difficulty = data.get("difficulty")
     try:
         difficulty_value = int(difficulty)

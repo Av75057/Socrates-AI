@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any, AsyncGenerator
 
 import httpx
 
+from app.config import get_settings
 from app.services.llm.global_call import (
     LLM_UNAVAILABLE,
     chat_completion_global_async,
@@ -43,6 +45,25 @@ def _http_error_message(exc: httpx.HTTPStatusError, *, openrouter: bool) -> str:
     return f"{prefix} Ошибка HTTP {code}. Попробуй позже."
 
 
+def _extract_json_object(text: str) -> dict[str, Any]:
+    raw = (text or "").strip()
+    if not raw:
+        raise ValueError("empty json response")
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    match = re.search(r"\{[\s\S]*\}", raw)
+    if not match:
+        raise ValueError("json object not found")
+    parsed = json.loads(match.group())
+    if not isinstance(parsed, dict):
+        raise ValueError("json payload is not an object")
+    return parsed
+
+
 class ModelRouter:
     def __init__(
         self,
@@ -54,10 +75,17 @@ class ModelRouter:
         custom_model_name: str | None = None,
         use_openrouter_headers: bool | None = None,
     ) -> None:
-        self._api_key = (api_key if api_key is not None else os.getenv("OPENROUTER_API_KEY", "")) or ""
-        raw_url = (
-            api_url or os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")
-        ).rstrip("/")
+        settings = get_settings()
+        provider = get_effective_provider()
+        default_key = settings.openai_api_key if provider == "openai" else os.getenv("OPENROUTER_API_KEY", "")
+        default_url = (
+            settings.openai_api_url
+            if provider == "openai"
+            else os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")
+        )
+        self._provider = provider
+        self._api_key = (api_key if api_key is not None else default_key) or ""
+        raw_url = (api_url or default_url).rstrip("/")
         if not raw_url.endswith("/chat/completions"):
             self._api_url = f"{raw_url.rstrip('/')}/chat/completions"
         else:
@@ -85,18 +113,25 @@ class ModelRouter:
 
     def _uses_user_llm_endpoint(self) -> bool:
         """Свой URL+модель из настроек пользователя (OpenAI-compatible)."""
-        return self._custom_model_name is not None
+        return self._custom_model_name is not None or self._provider == "openai"
 
     def select_model(self, mode: str) -> str:
+        settings = get_settings()
         if self._custom_model_name:
             return self._custom_model_name
-        if get_effective_provider() == "ollama":
+        if self._provider == "ollama":
             om = get_effective_ollama_model()
             if mode == "question":
                 return os.getenv("OLLAMA_MODEL_QUESTION") or om
             if mode == "hint":
                 return os.getenv("OLLAMA_MODEL_HINT") or om
             return os.getenv("OLLAMA_MODEL_EXPLAIN") or om
+        if self._provider == "openai":
+            if mode == "question":
+                return settings.openai_model_question
+            if mode == "hint":
+                return settings.openai_model_hint
+            return settings.openai_model_explain
         if mode == "question":
             return os.getenv("OPENROUTER_MODEL_QUESTION", "deepseek/deepseek-chat")
         if mode == "hint":
@@ -104,19 +139,29 @@ class ModelRouter:
         return os.getenv("OPENROUTER_MODEL_EXPLAIN", "deepseek/deepseek-chat")
 
     def _fallback_model(self) -> str:
+        settings = get_settings()
         if self._custom_model_name:
             return self._custom_model_name
+        if self._provider == "openai":
+            return settings.openai_model_fallback
         return os.getenv("OPENROUTER_MODEL_FALLBACK", "openrouter/auto")
 
     def pedagogy_model(self) -> str:
+        settings = get_settings()
         if self._custom_model_name:
             return self._custom_model_name
-        if get_effective_provider() == "ollama":
+        if self._provider == "ollama":
             return os.getenv("OLLAMA_MODEL_PEDAGOGY") or get_effective_ollama_model()
+        if self._provider == "openai":
+            return settings.openai_model_pedagogy
         return os.getenv("OPENROUTER_MODEL_PEDAGOGY", "google/gemini-2.0-flash-001")
 
     def is_valid(self, response: str, mode: str) -> bool:
         return validate_response(response, mode)
+
+    @staticmethod
+    def _generation_budget(mode: str) -> int:
+        return int(get_settings().llm_max_tokens)
 
     async def _call_user_endpoint(
         self,
@@ -126,11 +171,17 @@ class ModelRouter:
         temperature: float,
         max_tokens: int,
     ) -> str:
-        if not self._api_key and self._openrouter_brand:
-            return (
-                "[OpenRouter] Задайте OPENROUTER_API_KEY в backend/.env. "
-                "Пока опиши своими словами, что ты уже понимаешь по теме."
-            )
+        if not self._api_key:
+            if self._provider == "openai":
+                return (
+                    "[LLM] Задайте OPENAI_API_KEY в backend/.env. "
+                    "Пока опиши своими словами, что ты уже понимаешь по теме."
+                )
+            if self._openrouter_brand:
+                return (
+                    "[OpenRouter] Задайте OPENROUTER_API_KEY в backend/.env. "
+                    "Пока опиши своими словами, что ты уже понимаешь по теме."
+                )
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -157,8 +208,8 @@ class ModelRouter:
         messages: list[dict[str, str]],
         model: str,
         *,
-        temperature: float = 0.7,
-        max_tokens: int = 300,
+        temperature: float = 0.3,
+        max_tokens: int = 250,
     ) -> str:
         if self._uses_user_llm_endpoint():
             return await self._call_user_endpoint(
@@ -168,6 +219,26 @@ class ModelRouter:
             messages, model=model, temperature=temperature, max_tokens=max_tokens
         )
 
+    async def call_model_json(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        *,
+        temperature: float = 0.1,
+        max_tokens: int = 300,
+    ) -> dict[str, Any]:
+        raw = await self.call_model(
+            messages,
+            model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return _extract_json_object(raw)
+
+    @staticmethod
+    def parse_json_object(text: str) -> dict[str, Any]:
+        return _extract_json_object(text)
+
     async def _call_user_endpoint_stream(
         self,
         messages: list[dict[str, str]],
@@ -176,12 +247,19 @@ class ModelRouter:
         temperature: float,
         max_tokens: int,
     ) -> AsyncGenerator[str, None]:
-        if not self._api_key and self._openrouter_brand:
-            yield (
-                "[OpenRouter] Задайте OPENROUTER_API_KEY в backend/.env. "
-                "Пока опиши своими словами, что ты уже понимаешь по теме."
-            )
-            return
+        if not self._api_key:
+            if self._provider == "openai":
+                yield (
+                    "[LLM] Задайте OPENAI_API_KEY в backend/.env. "
+                    "Пока опиши своими словами, что ты уже понимаешь по теме."
+                )
+                return
+            if self._openrouter_brand:
+                yield (
+                    "[OpenRouter] Задайте OPENROUTER_API_KEY в backend/.env. "
+                    "Пока опиши своими словами, что ты уже понимаешь по теме."
+                )
+                return
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -222,8 +300,8 @@ class ModelRouter:
         messages: list[dict[str, str]],
         model: str,
         *,
-        temperature: float = 0.7,
-        max_tokens: int = 300,
+        temperature: float = 0.3,
+        max_tokens: int = 250,
     ) -> AsyncGenerator[str, None]:
         if self._uses_user_llm_endpoint():
             async for chunk in self._call_user_endpoint_stream(
@@ -248,16 +326,17 @@ class ModelRouter:
             {"role": "user", "content": user_message},
         ]
         primary = self.select_model(mode)
+        max_tokens = self._generation_budget(mode)
 
         try:
-            response = await self.call_model(messages, primary)
+            response = await self.call_model(messages, primary, max_tokens=max_tokens)
             if response != LLM_UNAVAILABLE and self.is_valid(response, mode):
                 return response
         except (httpx.HTTPError, ValueError, KeyError, json.JSONDecodeError):
             pass
 
         try:
-            fallback = await self.call_model(messages, self._fallback_model())
+            fallback = await self.call_model(messages, self._fallback_model(), max_tokens=max_tokens)
             if fallback != LLM_UNAVAILABLE and self.is_valid(fallback, mode):
                 return fallback
         except (httpx.HTTPError, ValueError, KeyError, json.JSONDecodeError):
@@ -276,10 +355,11 @@ class ModelRouter:
             {"role": "user", "content": user_message},
         ]
         primary = self.select_model(mode)
+        max_tokens = self._generation_budget(mode)
         yielded = False
 
         try:
-            async for chunk in self.call_model_stream(messages, primary):
+            async for chunk in self.call_model_stream(messages, primary, max_tokens=max_tokens):
                 if not chunk:
                     continue
                 yielded = True
@@ -290,7 +370,7 @@ class ModelRouter:
                 raise
 
         try:
-            async for chunk in self.call_model_stream(messages, self._fallback_model()):
+            async for chunk in self.call_model_stream(messages, self._fallback_model(), max_tokens=max_tokens):
                 if not chunk:
                     continue
                 yielded = True
@@ -308,7 +388,7 @@ class ModelRouter:
             {"role": "user", "content": user_prompt},
         ]
         if self._uses_user_llm_endpoint():
-            if not self._api_key and self._openrouter_brand:
+            if not self._api_key:
                 return "{}"
             model = self.pedagogy_model()
             payload: dict[str, Any] = {

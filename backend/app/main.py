@@ -17,8 +17,12 @@ from slowapi import _rate_limit_exceeded_handler
 
 from app.config import get_settings
 from app.limiter_instance import limiter
-from app.routes import admin, admin_topics, auth, chat, educator, gamification, pedagogy, public_sharing, topics, users
+from app.logging_setup import configure_logging
+from app.middleware import CorrelationIdMiddleware
+from app.routes import admin, admin_topics, auth, chat, educator, gamification, meta_training, pedagogy, public_sharing, topics, users
 
+settings = get_settings()
+configure_logging(settings.log_level, settings.log_format)
 log = logging.getLogger(__name__)
 
 
@@ -47,8 +51,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Socrates AI", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-settings = get_settings()
+app.add_middleware(CorrelationIdMiddleware)
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 # Dev: фронт с телефона/другого ПК по LAN (Vite на :5173+ или preview :4173+; Tailscale 100.x).
 _lan_dev_regex = (
@@ -77,6 +80,7 @@ app.include_router(admin_topics.router)
 app.include_router(educator.router)
 app.include_router(topics.router)
 app.include_router(chat.router, tags=["chat"])
+app.include_router(meta_training.router)
 app.include_router(gamification.router, prefix="/gamification", tags=["gamification"])
 app.include_router(pedagogy.router, prefix="/pedagogy", tags=["pedagogy"])
 

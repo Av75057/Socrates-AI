@@ -108,6 +108,17 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    llm_logs: Mapped[list["LLMLog"]] = relationship(
+        "LLMLog",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    meta_training_sessions: Mapped[list["MetaTrainingSession"]] = relationship(
+        "MetaTrainingSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="MetaTrainingSession.started_at",
+    )
 
 
 class UserSettings(Base):
@@ -153,6 +164,19 @@ class Conversation(Base):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    tutor_state: Mapped[dict] = mapped_column(
+        JSONType,
+        default=lambda: {
+            "level": 2,
+            "mode": "friendly",
+            "step": 0,
+            "stuck": False,
+            "last_fallacy": None,
+            "topic": "general",
+            "attempted_concepts": [],
+        },
+        nullable=False,
+    )
 
     user: Mapped[User] = relationship(back_populates="conversations")
     messages: Mapped[list[Message]] = relationship(
@@ -167,6 +191,12 @@ class Conversation(Base):
         cascade="all, delete-orphan",
     )
     assignment: Mapped["Assignment | None"] = relationship("Assignment", back_populates="conversations")
+    llm_logs: Mapped[list["LLMLog"]] = relationship(
+        "LLMLog",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="LLMLog.created_at",
+    )
 
 
 class Classroom(Base):
@@ -297,6 +327,36 @@ class Message(Base):
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
 
 
+class LLMLog(Base):
+    __tablename__ = "llm_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    user_messages: Mapped[list | dict] = mapped_column(JSONType, nullable=False)
+    model_params: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    raw_response: Mapped[str] = mapped_column(Text, nullable=False)
+    response_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    conversation: Mapped[Conversation | None] = relationship("Conversation", back_populates="llm_logs")
+    user: Mapped[User | None] = relationship("User", back_populates="llm_logs")
+
+
 class Topic(Base):
     __tablename__ = "topics"
 
@@ -409,3 +469,37 @@ class GamificationProgress(Base):
     extra_state: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="gamification")
+
+
+class MetaTrainingSession(Base):
+    __tablename__ = "meta_training_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    session_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    thesis: Mapped[str] = mapped_column(Text, nullable=False)
+    topic_slug: Mapped[str] = mapped_column(String(128), nullable=False)
+    final_phase: Mapped[str] = mapped_column(String(32), nullable=False, default="completed")
+    scores: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    questions: Mapped[list] = mapped_column(JSONType, nullable=False)
+    frames: Mapped[list] = mapped_column(JSONType, nullable=False)
+    transcript: Mapped[list] = mapped_column(JSONType, nullable=False)
+    reflection_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    awarded_wisdom_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    ended_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    user: Mapped[User | None] = relationship(back_populates="meta_training_sessions")

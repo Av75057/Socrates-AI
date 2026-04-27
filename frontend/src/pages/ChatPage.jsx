@@ -68,6 +68,24 @@ import ConversationList from "../components/chat/ConversationList.jsx";
 import { useSSE } from "../hooks/useSSE.js";
 import TopicCard from "../components/topics/TopicCard.jsx";
 import { listTopics, startTopic } from "../api/topicsApi.js";
+import MetaTrainingPanel from "../components/meta/MetaTrainingPanel.jsx";
+import MetaTrainingComposer from "../components/meta/MetaTrainingComposer.jsx";
+import {
+  advanceMetaTrainingPhase,
+  endMetaTraining,
+  fetchMetaTrainingStatus,
+  postMetaTrainingMessage,
+  startMetaTraining,
+  switchMetaTrainingFrame,
+} from "../api/metaTrainingApi.js";
+
+const META_PHASE_ROLE = {
+  orientation: "Навигатор по вопросам",
+  exploration: "Навигатор по рамкам",
+  sparring: "Защитник тезиса",
+  reflection: "Зеркало рефлексии",
+  completed: "Итоговый разбор",
+};
 
 function messagesFromNewConversation(c) {
   const t = (c.opening_message || "").trim();
@@ -242,6 +260,19 @@ function normalizeConversationMessages(detail) {
   }));
 }
 
+function normalizeMetaMessages(items) {
+  return (items || []).map((item) => {
+    const prefix =
+      item.role === "assistant" ? `[${META_PHASE_ROLE[item.phase] || "Meta"}] ` : "";
+    return {
+      id: item.id,
+      role: item.role,
+      text: `${prefix}${item.text}`,
+      createdAt: item.created_at ? new Date(item.created_at).getTime() : Date.now(),
+    };
+  });
+}
+
 function SaveStatusBadge({ status }) {
   if (!status) return null;
   const tone =
@@ -330,6 +361,13 @@ export default function ChatPage() {
     const pending = pendingTurnsForSession(useChatStore.getState().sessionId).length;
     return pending > 0 ? { kind: "queued", text: `Локально сохранено: ${pending}` } : null;
   });
+  const [metaSession, setMetaSession] = useState(null);
+  const [metaMessages, setMetaMessages] = useState([]);
+  const [metaLoading, setMetaLoading] = useState(false);
+  const [metaDetectedQuestionType, setMetaDetectedQuestionType] = useState(null);
+  const [metaDetectedQuestionHint, setMetaDetectedQuestionHint] = useState(null);
+  const [metaDetectedAssumptionHint, setMetaDetectedAssumptionHint] = useState(null);
+  const [metaDiversityHint, setMetaDiversityHint] = useState(null);
   const chatScrollRef = useRef(null);
   const syncQueueRef = useRef(false);
   const streamingMessageIdRef = useRef(null);
@@ -338,6 +376,47 @@ export default function ChatPage() {
   const { send: sendStream, cancel: cancelStream, streaming: streamInFlight } = useSSE("/api/chat/message/stream");
 
   const lastActivityRef = useRef(Date.now());
+  const metaMode = searchParams.get("mode") === "meta";
+
+  const applyMetaPayload = useCallback((payload) => {
+    if (!payload || typeof payload !== "object") return;
+    const session = payload.session || null;
+    setMetaSession(session);
+    setMetaMessages(normalizeMetaMessages(payload.messages || []));
+    const nextType =
+      session?.phase === "orientation" ? payload.detected_question_type || null : null;
+    const latestQuestion =
+      session?.phase === "orientation" && Array.isArray(session?.questions) && session.questions.length > 0
+        ? session.questions[session.questions.length - 1]
+        : null;
+    setMetaDetectedQuestionType(nextType);
+    setMetaDetectedQuestionHint(nextType ? null : null);
+    setMetaDetectedAssumptionHint(nextType ? latestQuestion?.assumption || null : null);
+    const questions = Array.isArray(session?.questions) ? session.questions : [];
+    const recentTypes = questions
+      .slice(-3)
+      .map((item) => String(item?.question_type || "").trim())
+      .filter(Boolean);
+    const lastTwoSame =
+      recentTypes.length >= 2 && recentTypes[recentTypes.length - 1] === recentTypes[recentTypes.length - 2];
+    const seenTypes = new Set(recentTypes);
+    let nextDiversityHint = null;
+    if (session?.phase === "orientation" && lastTwoSame) {
+      const currentType = recentTypes[recentTypes.length - 1];
+      if (currentType === "factual") {
+        nextDiversityHint = "Ты дважды подряд идёшь в фактологию. Попробуй теперь концептуальный или мета-вопрос: не «что это», а «в каком смысле это считается знанием?»";
+      } else if (currentType === "conceptual") {
+        nextDiversityHint = "Ты держишься в концептуальной рамке. Попробуй провокационный ход: какое допущение в тезисе можно атаковать?";
+      } else if (currentType === "provocative") {
+        nextDiversityHint = "Ты хорошо атакуешь основания. Теперь попробуй мета-вопрос: по каким критериям вообще проверять этот тезис?";
+      } else if (currentType === "meta") {
+        nextDiversityHint = "Ты уже смотришь на правила знания. Теперь попробуй сменить оптику и задать более предметный концептуальный или провокационный вопрос.";
+      }
+    } else if (session?.phase === "orientation" && seenTypes.size >= 2 && questions.length >= 3) {
+      nextDiversityHint = "Типы вопросов уже начали различаться. Попробуй добрать ещё один тип, которого пока не хватает, чтобы карта была шире.";
+    }
+    setMetaDiversityHint(nextDiversityHint);
+  }, []);
 
   const bumpActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -546,6 +625,37 @@ export default function ChatPage() {
       cancelled = true;
     };
   }, [authUser?.id]);
+
+  useEffect(() => {
+    if (!metaMode) {
+      setMetaSession(null);
+      setMetaMessages([]);
+      setMetaDetectedQuestionType(null);
+      setMetaDetectedQuestionHint(null);
+      setMetaDetectedAssumptionHint(null);
+      setMetaDiversityHint(null);
+      return;
+    }
+    let cancelled = false;
+    setMetaLoading(true);
+    fetchMetaTrainingStatus(sessionId)
+      .then((payload) => {
+        if (!cancelled) applyMetaPayload(payload);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        if (error?.status === 404) {
+          setMetaSession(null);
+          setMetaMessages([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setMetaLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applyMetaPayload, metaMode, sessionId]);
 
   /** Память тьютора в Redis привязана к аккаунту, не к диалогу — подтягиваем при смене чата и при JWT без ожидания authUser. */
   useEffect(() => {
@@ -1169,6 +1279,94 @@ export default function ChatPage() {
     setPedagogyIntro(false);
   }, []);
 
+  const openMetaMode = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("mode", "meta");
+      return next;
+    });
+  }, [setSearchParams]);
+
+  const exitMetaMode = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("mode");
+      return next;
+    });
+    setMetaSession(null);
+    setMetaMessages([]);
+    setMetaDetectedQuestionType(null);
+    setMetaDetectedQuestionHint(null);
+    setMetaDetectedAssumptionHint(null);
+    setMetaDiversityHint(null);
+  }, [setSearchParams]);
+
+  const handleMetaStart = useCallback(async () => {
+    setMetaLoading(true);
+    try {
+      openMetaMode();
+      const payload = await startMetaTraining(sessionId);
+      applyMetaPayload(payload);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Не удалось запустить мета-тренировку");
+    } finally {
+      setMetaLoading(false);
+    }
+  }, [applyMetaPayload, openMetaMode, sessionId]);
+
+  const handleMetaSend = useCallback(async (text) => {
+    setMetaLoading(true);
+    try {
+      const payload = await postMetaTrainingMessage(sessionId, text);
+      applyMetaPayload(payload);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Не удалось отправить сообщение");
+    } finally {
+      setMetaLoading(false);
+    }
+  }, [applyMetaPayload, sessionId]);
+
+  const handleMetaSwitchFrame = useCallback(async (text) => {
+    setMetaLoading(true);
+    try {
+      const payload = await switchMetaTrainingFrame(sessionId, text);
+      applyMetaPayload(payload);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Не удалось сменить рамку");
+    } finally {
+      setMetaLoading(false);
+    }
+  }, [applyMetaPayload, sessionId]);
+
+  const handleMetaAdvancePhase = useCallback(async () => {
+    setMetaLoading(true);
+    try {
+      const payload = await advanceMetaTrainingPhase(sessionId);
+      applyMetaPayload(payload);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Не удалось переключить фазу");
+    } finally {
+      setMetaLoading(false);
+    }
+  }, [applyMetaPayload, sessionId]);
+
+  const handleMetaEnd = useCallback(async (summary, confidence) => {
+    setMetaLoading(true);
+    try {
+      const payload = await endMetaTraining(sessionId, summary, confidence);
+      applyMetaPayload(payload);
+      const progress = authUser ? await fetchGamificationProgressMe() : await fetchGamificationProgress(sessionId);
+      if (progress) {
+        useChatStore.getState().applyGamificationProgress(progress);
+        setWisdomBump((k) => k + 1);
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Не удалось завершить мета-тренировку");
+    } finally {
+      setMetaLoading(false);
+    }
+  }, [applyMetaPayload, authUser, sessionId]);
+
   const handleEditMessage = useCallback(
     async (messageId, text) => {
       if (!authUser) return;
@@ -1321,44 +1519,58 @@ export default function ChatPage() {
           />
         </div>
       ) : null}
-      <div className="mx-4 mt-3 rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/45">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700 dark:text-cyan-300">
-              Популярные темы
-            </p>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Быстрый старт для осмысленного разговора, если не хочется придумывать тему с нуля.
-            </p>
+      {!metaMode || !metaSession ? (
+        <MetaTrainingPanel
+          session={metaSession}
+          onStart={handleMetaStart}
+          onExit={exitMetaMode}
+          loading={metaLoading}
+          detectedQuestionType={metaDetectedQuestionType}
+          detectedQuestionHint={metaDetectedQuestionHint}
+          detectedAssumptionHint={metaDetectedAssumptionHint}
+          diversityHint={metaDiversityHint}
+        />
+      ) : null}
+      {!metaMode ? (
+        <div className="mx-4 mt-3 rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/45">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700 dark:text-cyan-300">
+                Популярные темы
+              </p>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                Быстрый старт для осмысленного разговора, если не хочется придумывать тему с нуля.
+              </p>
+            </div>
+            <Link to="/topics" className="text-sm font-medium text-cyan-700 underline dark:text-cyan-400">
+              Вся библиотека
+            </Link>
           </div>
-          <Link to="/topics" className="text-sm font-medium text-cyan-700 underline dark:text-cyan-400">
-            Вся библиотека
-          </Link>
+          {topicSuggestionsLoading ? (
+            <div className="mt-4 grid gap-3 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="h-48 animate-pulse rounded-3xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40"
+                />
+              ))}
+            </div>
+          ) : topicSuggestions.length > 0 ? (
+            <div className="mt-4 grid gap-3 lg:grid-cols-4">
+              {topicSuggestions.map((topic) => (
+                <TopicCard
+                  key={topic.id}
+                  topic={topic}
+                  compact
+                  starting={startingTopicId === topic.id}
+                  onStart={handleStartTopic}
+                  onOpen={() => navigate("/topics")}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
-        {topicSuggestionsLoading ? (
-          <div className="mt-4 grid gap-3 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="h-48 animate-pulse rounded-3xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40"
-              />
-            ))}
-          </div>
-        ) : topicSuggestions.length > 0 ? (
-          <div className="mt-4 grid gap-3 lg:grid-cols-4">
-            {topicSuggestions.map((topic) => (
-              <TopicCard
-                key={topic.id}
-                topic={topic}
-                compact
-                starting={startingTopicId === topic.id}
-                onStart={handleStartTopic}
-                onOpen={() => navigate("/topics")}
-              />
-            ))}
-          </div>
-        ) : null}
-      </div>
+      ) : null}
       {authUser ? (
         <div className="mx-4 mt-2 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 dark:text-slate-400">
           <Link to="/profile" className="text-cyan-700 hover:underline dark:text-cyan-400">
@@ -1400,24 +1612,41 @@ export default function ChatPage() {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:min-w-[400px]">
-          <ModeIndicator mode={mode} attempts={attempts} frustration={frustration} />
-          <UserStateBadge type={userType} />
-          <UserMemoryPanel memory={memory} className="mx-4 mt-0 lg:hidden" />
-          <div className="mx-4 lg:hidden" data-tour="skills-mobile">
-            <SkillTree skillTree={skillTree} topic={topic} />
-          </div>
-          <ThinkingPanel profile={memory.thinking_profile} className="mx-4 lg:hidden" />
-          <AssistPanel
-            level={frustrationLevel}
-            loading={loading}
-            onExampleHint={onRequestExample}
-            onExplain={onGiveUp}
-            conversationKey={conversationId != null ? `conversation_${conversationId}` : `session_${sessionId}`}
-          />
+          {metaMode && metaSession ? (
+            <MetaTrainingPanel
+              session={metaSession}
+              onStart={handleMetaStart}
+              onExit={exitMetaMode}
+              loading={metaLoading}
+              detectedQuestionType={metaDetectedQuestionType}
+              detectedQuestionHint={metaDetectedQuestionHint}
+              detectedAssumptionHint={metaDetectedAssumptionHint}
+              diversityHint={metaDiversityHint}
+              compact
+            />
+          ) : null}
+          {!metaMode ? <ModeIndicator mode={mode} attempts={attempts} frustration={frustration} /> : null}
+          {!metaMode ? <UserStateBadge type={userType} /> : null}
+          {!metaMode ? <UserMemoryPanel memory={memory} className="mx-4 mt-0 lg:hidden" /> : null}
+          {!metaMode ? (
+            <div className="mx-4 lg:hidden" data-tour="skills-mobile">
+              <SkillTree skillTree={skillTree} topic={topic} />
+            </div>
+          ) : null}
+          {!metaMode ? <ThinkingPanel profile={memory.thinking_profile} className="mx-4 lg:hidden" /> : null}
+          {!metaMode ? (
+            <AssistPanel
+              level={frustrationLevel}
+              loading={loading}
+              onExampleHint={onRequestExample}
+              onExplain={onGiveUp}
+              conversationKey={conversationId != null ? `conversation_${conversationId}` : `session_${sessionId}`}
+            />
+          ) : null}
           <ChatWindow
             ref={chatScrollRef}
-            messages={messages}
-            loading={loading}
+            messages={metaMode ? metaMessages : messages}
+            loading={metaMode ? metaLoading : loading}
             feedback={feedback}
             microFeedback={microFeedback}
             simplerBanner={simplerBanner}
@@ -1433,34 +1662,45 @@ export default function ChatPage() {
               bumpActivity();
             }}
           />
-          <InputBox
-            userType={userType}
-            onSend={onSend}
-            loading={loading}
-            interruptibleLoading={streamInFlight}
-            canSend={canSend}
-            onRequestHint={onRequestHint}
-            onRequestExample={onRequestExample}
-            onGiveUp={onGiveUp}
-            onQuickDontKnow={() => bumpUxMetric("dontKnowQuick")}
-            onUserActivity={bumpActivity}
-            onInputFocus={scrollChatToBottom}
-            topBar={
-              <>
-                <TutorModeSelector
-                  value={tutorMode}
-                  onChange={handleTutorModeChange}
-                  disabled={loading}
-                />
-                <DifficultyIndicator level={pedDifficulty} />
-                <HintButton
-                  visible={tutorMode === "friendly" || pedDifficulty > 2}
-                  disabled={loading || !canSend()}
-                  onClick={handlePedagogyHint}
-                />
-              </>
-            }
-          />
+          {metaMode ? (
+            <MetaTrainingComposer
+              phase={metaSession?.phase || "orientation"}
+              loading={metaLoading}
+              onSend={handleMetaSend}
+              onSwitchFrame={handleMetaSwitchFrame}
+              onAdvancePhase={handleMetaAdvancePhase}
+              onEnd={handleMetaEnd}
+            />
+          ) : (
+            <InputBox
+              userType={userType}
+              onSend={onSend}
+              loading={loading}
+              interruptibleLoading={streamInFlight}
+              canSend={canSend}
+              onRequestHint={onRequestHint}
+              onRequestExample={onRequestExample}
+              onGiveUp={onGiveUp}
+              onQuickDontKnow={() => bumpUxMetric("dontKnowQuick")}
+              onUserActivity={bumpActivity}
+              onInputFocus={scrollChatToBottom}
+              topBar={
+                <>
+                  <TutorModeSelector
+                    value={tutorMode}
+                    onChange={handleTutorModeChange}
+                    disabled={loading}
+                  />
+                  <DifficultyIndicator level={pedDifficulty} />
+                  <HintButton
+                    visible={tutorMode === "friendly" || pedDifficulty > 2}
+                    disabled={loading || !canSend()}
+                    onClick={handlePedagogyHint}
+                  />
+                </>
+              }
+            />
+          )}
         </div>
 
         <SidePanel
