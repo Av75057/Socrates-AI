@@ -13,6 +13,7 @@ export default function AdminLLMPage() {
   const [error, setError] = useState("");
   const [provider, setProvider] = useState("openrouter");
   const [ollamaModel, setOllamaModel] = useState("qwen2.5:7b-instruct");
+  const [customOllamaModel, setCustomOllamaModel] = useState("");
   const [testPrompt, setTestPrompt] = useState("Скажи коротко по-русски: привет.");
   const [testReply, setTestReply] = useState("");
   const [testLoading, setTestLoading] = useState(false);
@@ -25,7 +26,10 @@ export default function AdminLLMPage() {
       const s = await adminLLMStatus();
       setStatus(s);
       setProvider(s.effective_provider || "openrouter");
-      if (s.ollama_model) setOllamaModel(s.ollama_model);
+      if (s.ollama_model) {
+        setOllamaModel(s.ollama_model);
+        setCustomOllamaModel(s.ollama_model);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -43,7 +47,10 @@ export default function AdminLLMPage() {
     setError("");
     try {
       const body = { provider };
-      if (provider === "ollama") body.ollama_model = ollamaModel.trim() || null;
+      if (provider === "ollama") {
+        const selected = ollamaModel === "__custom__" ? customOllamaModel.trim() : ollamaModel.trim();
+        body.ollama_model = selected || null;
+      }
       await adminLLMSwitch(body);
       await load();
     } catch (e) {
@@ -160,15 +167,39 @@ export default function AdminLLMPage() {
                 </label>
               </div>
               {provider === "ollama" && (
-                <label className="block text-sm">
-                  <span className="text-slate-600 dark:text-slate-400">Модель Ollama</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
-                    value={ollamaModel}
-                    onChange={(ev) => setOllamaModel(ev.target.value)}
-                    placeholder="qwen2.5:7b-instruct"
-                  />
-                </label>
+                <div className="space-y-3">
+                  <label className="block text-sm">
+                    <span className="text-slate-600 dark:text-slate-400">Модель Ollama</span>
+                    <select
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                      value={ollamaModel}
+                      onChange={(ev) => setOllamaModel(ev.target.value)}
+                    >
+                      {(status.ollama_models || []).map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                          {model === status.ollama_tutor_model ? " · TutorRL" : ""}
+                        </option>
+                      ))}
+                      <option value="__custom__">Другая модель…</option>
+                    </select>
+                  </label>
+                  {ollamaModel === "__custom__" && (
+                    <label className="block text-sm">
+                      <span className="text-slate-600 dark:text-slate-400">Произвольное имя модели</span>
+                      <input
+                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                        value={customOllamaModel}
+                        onChange={(ev) => setCustomOllamaModel(ev.target.value)}
+                        placeholder="socrates-tutor-rl"
+                      />
+                    </label>
+                  )}
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Список подгружается из <code>/api/tags</code>. Рекомендуемая модель для TutorRL:{" "}
+                    <code>{status.ollama_tutor_model || "socrates-tutor-rl"}</code>.
+                  </p>
+                </div>
               )}
               <div className="flex flex-wrap gap-3">
                 <button

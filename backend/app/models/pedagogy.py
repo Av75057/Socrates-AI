@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +24,7 @@ class PedagogyTurnContext:
     russian_only: bool = True
     fallacy_instruction: str = ""
     persistent_profile: str = ""
+    tutor_state: dict[str, Any] | None = None
 
 
 class UserPedagogyState(BaseModel):

@@ -18,6 +18,8 @@ frontend/dist/
 mobile/node_modules/
 mobile/.expo/
 npm-debug.log*
+models/
+*.gguf
 
 # OS / IDE
 .DS_Store

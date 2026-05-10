@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.services.llm.global_call import chat_completion_global_sync
 from app.services.llm.runtime import get_effective_ollama_model, get_effective_provider
-from app.db.models import Conversation, Skill, User, UserPedagogy, UserSkill
+from app.db.models import Conversation, Skill, Topic, User, UserPedagogy, UserSkill, UserTopicProgress
 from app.services.conversation_db import display_title_for_conversation
 
 log = logging.getLogger(__name__)
@@ -115,9 +115,17 @@ def _logical_consistency_sync(user_text: str) -> bool | None:
     s = get_settings()
     if not s.skill_update_enabled:
         return None
-    if get_effective_provider() == "openrouter" and not os.getenv("OPENROUTER_API_KEY", "").strip():
+    provider = get_effective_provider()
+    if provider == "openrouter" and not os.getenv("OPENROUTER_API_KEY", "").strip():
         return None
-    model = get_effective_ollama_model() if get_effective_provider() == "ollama" else s.logical_consistency_model
+    if provider == "openai" and not s.openai_api_key.strip():
+        return None
+    if provider == "ollama":
+        model = get_effective_ollama_model()
+    elif provider == "openai":
+        model = s.openai_model_pedagogy or s.openai_model_fallback
+    else:
+        model = s.logical_consistency_model
     system = (
         "Ответь одним словом: ДА — если в тексте ученика есть явное логическое противоречие "
         "(утверждение A и не-A в одной мысли), НЕТ — если явного противоречия нет. Только ДА или НЕТ."
@@ -154,11 +162,105 @@ def _adjust_skill(db: Session, user_id: int, skill_id: str, delta: int) -> None:
     row.last_updated = datetime.now(timezone.utc)
 
 
+def normalize_learning_objectives(raw: Any) -> list[dict[str, Any]]:
+    items = raw if isinstance(raw, list) else []
+    out: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        skill_id = str(item.get("skill_id") or "").strip()
+        if not title or not skill_id:
+            continue
+        try:
+            target_level = int(item.get("target_level") or 60)
+        except (TypeError, ValueError):
+            target_level = 60
+        target_level = max(1, min(100, target_level))
+        out.append(
+            {
+                "title": title[:255],
+                "skill_id": skill_id[:64],
+                "target_level": target_level,
+                "description": str(item.get("description") or "").strip()[:512] or None,
+            }
+        )
+    return out[:12]
+
+
+def _ensure_topic_progress(db: Session, user_id: int, topic_id: int) -> UserTopicProgress:
+    row = db.get(UserTopicProgress, {"user_id": user_id, "topic_id": topic_id})
+    if row is None:
+        row = UserTopicProgress(
+            user_id=user_id,
+            topic_id=topic_id,
+            completed=False,
+            rating=None,
+            mastery_score=0,
+            goals_state=[],
+            last_used=datetime.now(timezone.utc),
+        )
+        db.add(row)
+        db.flush()
+    return row
+
+
+def recompute_topic_mastery_sync(db: Session, user_id: int, topic_id: int) -> None:
+    topic = db.get(Topic, topic_id)
+    if topic is None:
+        return
+    progress = _ensure_topic_progress(db, user_id, topic_id)
+    objectives = normalize_learning_objectives(topic.learning_objectives)
+    if not objectives:
+        progress.goals_state = []
+        progress.mastery_score = 100 if progress.completed else 0
+        progress.last_assessed_at = datetime.now(timezone.utc)
+        return
+
+    skill_rows = (
+        db.execute(select(UserSkill).where(UserSkill.user_id == user_id))
+        .scalars()
+        .all()
+    )
+    by_skill = {row.skill_id: int(row.level or 0) for row in skill_rows}
+    goals_state: list[dict[str, Any]] = []
+    achieved = 0
+    mastery_total = 0.0
+    now = datetime.now(timezone.utc)
+
+    for objective in objectives:
+        current_level = max(0, min(100, int(by_skill.get(objective["skill_id"], 0))))
+        target_level = int(objective["target_level"])
+        ratio = min(1.0, current_level / target_level) if target_level > 0 else 0.0
+        is_achieved = current_level >= target_level
+        if is_achieved:
+            achieved += 1
+        mastery_total += ratio
+        goals_state.append(
+            {
+                "title": objective["title"],
+                "skill_id": objective["skill_id"],
+                "target_level": target_level,
+                "current_level": current_level,
+                "progress_percent": int(round(ratio * 100)),
+                "achieved": is_achieved,
+                "description": objective.get("description"),
+            }
+        )
+
+    progress.goals_state = goals_state
+    progress.mastery_score = int(round((mastery_total / len(objectives)) * 100))
+    progress.completed = achieved == len(objectives)
+    progress.last_assessed_at = now
+    progress.last_used = now
+
+
 def update_user_learning_progress_sync(
     user_id: int,
     user_text: str,
     analysis: dict[str, Any] | None,
     session_difficulty_after_turn: int,
+    topic_id: int | None = None,
 ) -> None:
     if not get_settings().skill_update_enabled:
         return
@@ -223,6 +325,8 @@ def update_user_learning_progress_sync(
             blended = max(1, min(5, round((ratio_d + session_difficulty_after_turn) / 2)))
             ped.current_difficulty = blended
             ped.last_active_at = datetime.now(timezone.utc)
+            if topic_id is not None:
+                recompute_topic_mastery_sync(db, user_id, topic_id)
             db.commit()
     except Exception:
         log.exception("update_user_learning_progress failed user_id=%s", user_id)

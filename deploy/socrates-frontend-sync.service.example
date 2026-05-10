@@ -1,0 +1,15 @@
+[Unit]
+Description=Socrates AI frontend build and sync
+After=network-online.target
+Wants=network-online.target
+Before=nginx.service
+
+[Service]
+Type=oneshot
+User=andrey
+Group=andrey
+WorkingDirectory=/home/andrey/ai-agent
+ExecStart=/home/andrey/ai-agent/deploy/refresh_frontend.sh
+
+[Install]
+WantedBy=multi-user.target

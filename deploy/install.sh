@@ -98,10 +98,30 @@ sudo systemctl reload nginx
 
 CODE="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 3 "http://127.0.0.1${PUBLIC_PORT:-}/" 2>/dev/null || echo "000")"
 if [[ "${CODE}" == "200" ]]; then
-  echo "==> Локальная проверка: http://127.0.0.1${PUBLIC_PORT:-}/ → HTTP ${CODE}"
+echo "==> Локальная проверка: http://127.0.0.1${PUBLIC_PORT:-}/ → HTTP ${CODE}"
 else
   echo "!!! Локально ответ HTTP ${CODE} (ожидалось 200). Запусти: ./deploy/troubleshoot.sh"
 fi
+
+# --- frontend sync on boot ---
+echo "==> systemd: socrates-frontend-sync..."
+sudo tee /etc/systemd/system/socrates-frontend-sync.service >/dev/null <<EOF
+[Unit]
+Description=Socrates AI frontend build and sync
+After=network-online.target
+Wants=network-online.target
+Before=nginx.service
+
+[Service]
+Type=oneshot
+User=${DEPLOY_USER}
+Group=${DEPLOY_USER}
+WorkingDirectory=${REPO_ROOT}
+ExecStart=${REPO_ROOT}/deploy/refresh_frontend.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 # --- systemd ---
 echo "==> systemd: socrates-backend..."
@@ -125,6 +145,8 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
+sudo systemctl enable socrates-frontend-sync
+sudo systemctl start socrates-frontend-sync
 sudo systemctl enable socrates-backend
 sudo systemctl restart socrates-backend
 

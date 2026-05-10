@@ -122,7 +122,7 @@ export default function SidePanel({
       : streak;
 
   return (
-    <aside className="hidden max-h-[100dvh] w-full shrink-0 flex-col gap-4 overflow-y-auto border-t border-slate-200 bg-slate-50 p-4 lg:flex lg:w-[280px] lg:min-w-[280px] lg:max-w-[280px] lg:border-l lg:border-t-0 dark:border-slate-800/80 dark:bg-[#0f172a]">
+    <aside className="hidden w-full flex-col gap-4 border-t border-slate-200 bg-slate-50 p-4 lg:flex lg:w-auto lg:min-w-0 lg:max-w-none lg:self-stretch lg:border-l lg:border-t-0 dark:border-slate-800/80 dark:bg-[#0f172a]">
       {dailyChallengeSlot}
       {conversationListSlot}
       <TutorAvatar mood={avatarMood} whisperIndex={avatarWhisperIdx} />

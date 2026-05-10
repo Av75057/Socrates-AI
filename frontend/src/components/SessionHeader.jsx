@@ -26,7 +26,7 @@ export default function SessionHeader({
   return (
     <>
       <header className="shrink-0 border-b border-slate-200 bg-white/95 px-2 py-2 backdrop-blur dark:border-slate-800/90 dark:bg-[#0f172a]/95 sm:px-4 sm:py-3">
-        <div className="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-3">
               <button

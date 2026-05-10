@@ -14,9 +14,21 @@ const EMPTY_FORM = {
   initial_prompt: "",
   difficulty: 2,
   tags: "",
+  learning_objectives: [
+    { title: "", skill_id: "", target_level: 60, description: "" },
+  ],
   is_premium: false,
   is_active: true,
 };
+
+function normalizeObjectiveRow(row = {}) {
+  return {
+    title: String(row.title || ""),
+    skill_id: String(row.skill_id || ""),
+    target_level: Math.max(1, Math.min(100, Number(row.target_level) || 60)),
+    description: String(row.description || ""),
+  };
+}
 
 function formToPayload(form) {
   return {
@@ -28,6 +40,15 @@ function formToPayload(form) {
       .split(",")
       .map((item) => item.trim().toLowerCase())
       .filter(Boolean),
+    learning_objectives: (Array.isArray(form.learning_objectives) ? form.learning_objectives : [])
+      .map(normalizeObjectiveRow)
+      .filter((item) => item.title.trim() && item.skill_id.trim())
+      .map((item) => ({
+        title: item.title.trim(),
+        skill_id: item.skill_id.trim(),
+        target_level: item.target_level,
+        description: item.description.trim() || null,
+      })),
     is_premium: !!form.is_premium,
     is_active: !!form.is_active,
   };
@@ -152,11 +173,14 @@ export default function AdminTopicsPage() {
                     <tr key={topic.id} className="border-b border-slate-100 dark:border-slate-800">
                       <td className="py-3 pr-4">{topic.id}</td>
                       <td className="py-3 pr-4">
-                        <div className="font-medium">{topic.title}</div>
-                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          {(topic.tags || []).map((tag) => `#${tag}`).join(" ")}
-                        </div>
-                      </td>
+                          <div className="font-medium">{topic.title}</div>
+                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            {(topic.tags || []).map((tag) => `#${tag}`).join(" ")}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            Целей: {(topic.learning_objectives || []).length}
+                          </div>
+                        </td>
                       <td className="py-3 pr-4">{topic.difficulty}/5</td>
                       <td className="py-3 pr-4">{topic.is_premium ? "да" : "нет"}</td>
                       <td className="py-3 pr-4">{topic.is_active ? "да" : "нет"}</td>
@@ -172,6 +196,10 @@ export default function AdminTopicsPage() {
                               initial_prompt: topic.initial_prompt || "",
                               difficulty: topic.difficulty || 2,
                               tags: (topic.tags || []).join(", "),
+                              learning_objectives:
+                                (topic.learning_objectives || []).length > 0
+                                  ? topic.learning_objectives.map(normalizeObjectiveRow)
+                                  : EMPTY_FORM.learning_objectives,
                               is_premium: !!topic.is_premium,
                               is_active: !!topic.is_active,
                             });
@@ -296,6 +324,121 @@ export default function AdminTopicsPage() {
                 placeholder="Теги через запятую"
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm dark:border-slate-600 dark:bg-slate-950/50"
               />
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/35">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Цели обучения</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Свяжите тему с навыками и целевыми уровнями mastery.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        learning_objectives: [
+                          ...(Array.isArray(current.learning_objectives) ? current.learning_objectives : []),
+                          { title: "", skill_id: "", target_level: 60, description: "" },
+                        ],
+                      }))
+                    }
+                    className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium dark:border-slate-600"
+                  >
+                    Добавить цель
+                  </button>
+                </div>
+                <div className="mt-4 space-y-4">
+                  {(form.learning_objectives || []).map((objective, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/50"
+                    >
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <input
+                          value={objective.title}
+                          onChange={(e) =>
+                            setForm((current) => ({
+                              ...current,
+                              learning_objectives: current.learning_objectives.map((item, itemIdx) =>
+                                itemIdx === idx ? { ...item, title: e.target.value } : item,
+                              ),
+                            }))
+                          }
+                          placeholder="Например, Строит ясный аргумент"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm dark:border-slate-600 dark:bg-slate-950/50"
+                        />
+                        <input
+                          value={objective.skill_id}
+                          onChange={(e) =>
+                            setForm((current) => ({
+                              ...current,
+                              learning_objectives: current.learning_objectives.map((item, itemIdx) =>
+                                itemIdx === idx ? { ...item, skill_id: e.target.value } : item,
+                              ),
+                            }))
+                          }
+                          placeholder="skill_id, например structure_argument"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm dark:border-slate-600 dark:bg-slate-950/50"
+                        />
+                      </div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+                        <input
+                          value={objective.description}
+                          onChange={(e) =>
+                            setForm((current) => ({
+                              ...current,
+                              learning_objectives: current.learning_objectives.map((item, itemIdx) =>
+                                itemIdx === idx ? { ...item, description: e.target.value } : item,
+                              ),
+                            }))
+                          }
+                          placeholder="Короткое описание цели"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm dark:border-slate-600 dark:bg-slate-950/50"
+                        />
+                        <label className="rounded-xl border border-slate-300 px-3 py-2 text-xs dark:border-slate-600">
+                          <span className="block text-slate-500 dark:text-slate-400">Цель %</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={objective.target_level}
+                            onChange={(e) =>
+                              setForm((current) => ({
+                                ...current,
+                                learning_objectives: current.learning_objectives.map((item, itemIdx) =>
+                                  itemIdx === idx
+                                    ? { ...item, target_level: Math.max(1, Math.min(100, Number(e.target.value) || 60)) }
+                                    : item,
+                                ),
+                              }))
+                            }
+                            className="mt-1 w-20 bg-transparent text-sm outline-none"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm((current) => {
+                              const next = current.learning_objectives.filter((_, itemIdx) => itemIdx !== idx);
+                              return {
+                                ...current,
+                                learning_objectives:
+                                  next.length > 0 ? next : [{ title: "", skill_id: "", target_level: 60, description: "" }],
+                              };
+                            })
+                          }
+                          className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
+                        >
+                          Удалить цель
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="inline-flex items-center gap-2 text-sm">
                   <input
@@ -351,6 +494,10 @@ export default function AdminTopicsPage() {
                     initial_prompt: draft.initial_prompt || "",
                     difficulty: draft.difficulty || 2,
                     tags: (draft.tags || []).join(", "),
+                    learning_objectives:
+                      (draft.learning_objectives || []).length > 0
+                        ? draft.learning_objectives.map(normalizeObjectiveRow)
+                        : EMPTY_FORM.learning_objectives,
                     is_premium: false,
                     is_active: true,
                   });

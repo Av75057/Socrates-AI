@@ -5,8 +5,10 @@ from app.services.llm.global_call import (
     chat_completion_global_sync,
 )
 from app.services.llm.runtime import (
+    get_configured_tutor_ollama_model,
     get_effective_ollama_model,
     get_effective_provider,
+    list_ollama_models,
     ping_ollama,
     set_runtime_llm,
     set_runtime_ollama_model,
@@ -16,8 +18,10 @@ from app.services.llm.runtime import (
 __all__ = [
     "chat_completion_global_async",
     "chat_completion_global_sync",
+    "get_configured_tutor_ollama_model",
     "get_effective_ollama_model",
     "get_effective_provider",
+    "list_ollama_models",
     "ping_ollama",
     "set_runtime_llm",
     "set_runtime_ollama_model",

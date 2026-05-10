@@ -59,6 +59,46 @@ VITE_API_URL=http://127.0.0.1:8000
 - `frontend/src/` — UI, геймификация, mind-map панель
 - `deploy/` — примеры **nginx** + **systemd** + пошаговый продакшен
 
+## Архитектура `/chat`
+
+После рефакторинга HTTP-роут `backend/app/routes/chat.py` остаётся тонким слоем: он принимает запрос, поднимает `correlation_id`, вызывает `ChatOrchestrator` и сериализует ответ.
+
+Основные backend-компоненты:
+
+- `app/services/chat_orchestrator.py` — orchestration одного turn.
+- `app/services/dialogue_state.py` — загрузка и сохранение состояния диалога, памяти, педагогики и контекста пользователя.
+- `app/services/instruction_builder.py` — подготовка prompt/planning-контекста для тьютора.
+- `app/services/answer_analyzer.py` — анализ глубины ответа и логических ошибок.
+- `app/services/response_composer.py` — финализация ответа тьютора, обновление памяти и persistence.
+- `app/services/state_machine.py` — enum фаз диалога и матрица допустимых переходов.
+
+Состояние сессии сериализуется в Redis/`memory` вместе с полем `phase`. Основные фазы: `greeting`, `awaiting_answer`, `hint_provided`, `answer_analyzed`, `correct`, `incorrect_retry`, `give_up`, `closing`.
+
+## Логирование и observability
+
+По умолчанию backend пишет структурированные JSON-логи в `stdout`. На каждый запрос middleware создаёт `correlation_id` и пробрасывает его во все слои обработки `/chat`.
+
+Полезные env-параметры в `backend/.env`:
+
+```env
+LOG_LEVEL=INFO
+LOG_FORMAT=json
+```
+
+В JSON-логах фиксируются стандартные поля:
+
+- `timestamp`
+- `level`
+- `logger`
+- `event`
+- `correlation_id`
+- `user_id`
+- `conversation_id`
+- `session_id`
+- `phase`
+
+Для локальной отладки можно запускать с `LOG_LEVEL=DEBUG`, чтобы видеть детали turn pipeline и переходов FSM.
+
 ## Educator Dashboard
 
 - Новая роль: `educator` — панель учителя/родителя доступна по `/educator`.

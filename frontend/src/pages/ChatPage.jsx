@@ -486,11 +486,6 @@ export default function ChatPage() {
     if (dontKnowCount >= 3) setSimplerBanner(true);
   }, [dontKnowCount]);
 
-  useEffect(() => {
-    document.body.classList.add("chat-route-lock");
-    return () => document.body.classList.remove("chat-route-lock");
-  }, []);
-
   useEffect(() => () => cancelStream(), [cancelStream]);
 
   useEffect(() => {
@@ -1419,7 +1414,7 @@ export default function ChatPage() {
   );
 
   return (
-    <div className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-slate-100 font-sans text-slate-900 dark:bg-[#0f172a] dark:text-slate-100">
+    <div className="relative flex min-h-screen flex-col overflow-x-hidden bg-slate-100 font-sans text-slate-900 dark:bg-[#0f172a] dark:text-slate-100">
       <PremiumTopicsModal open={topicUpgradeOpen} onClose={() => setTopicUpgradeOpen(false)} />
       <GamificationToastHost items={gamToasts} onDismiss={dismissGamToast} />
       <AchievementsModal
@@ -1610,8 +1605,8 @@ export default function ChatPage() {
       ) : null}
       <FallacyNotification fallacy={fallacyNotice} onDismiss={() => setFallacyNotice(null)} />
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:min-w-[400px]">
+      <div className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="flex min-w-0 flex-col">
           {metaMode && metaSession ? (
             <MetaTrainingPanel
               session={metaSession}

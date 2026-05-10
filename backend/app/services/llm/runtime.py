@@ -29,6 +29,10 @@ def get_effective_ollama_model() -> str:
     return (get_settings().ollama_model or "qwen2.5:7b-instruct").strip()
 
 
+def get_configured_tutor_ollama_model() -> str:
+    return (get_settings().ollama_tutor_model or "socrates-tutor-rl").strip()
+
+
 def set_runtime_provider(provider: str | None) -> None:
     """None — использовать LLM_PROVIDER из .env."""
     global _provider_override
@@ -37,8 +41,8 @@ def set_runtime_provider(provider: str | None) -> None:
             _provider_override = None
             return
         p = str(provider).lower().strip()
-        if p not in ("ollama", "openrouter"):
-            raise ValueError("provider must be 'ollama' or 'openrouter'")
+        if p not in ("ollama", "openrouter", "openai"):
+            raise ValueError("provider must be 'ollama', 'openrouter' or 'openai'")
         _provider_override = p
 
 
@@ -69,6 +73,28 @@ def ping_ollama(base_url: str | None = None) -> bool:
             return r.status_code == 200
     except Exception:
         return False
+
+
+def list_ollama_models(base_url: str | None = None) -> list[str]:
+    url = (base_url or get_settings().ollama_base_url or "http://localhost:11434").rstrip("/")
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            r = client.get(f"{url}/api/tags")
+            r.raise_for_status()
+            data = r.json()
+    except Exception as exc:
+        log.debug("Failed to load ollama models from %s: %s", url, exc)
+        return []
+
+    models = data.get("models") or []
+    names: list[str] = []
+    for item in models:
+        if not isinstance(item, dict):
+            continue
+        raw = item.get("model") or item.get("name")
+        if isinstance(raw, str) and raw.strip():
+            names.append(raw.strip())
+    return sorted(set(names))
 
 
 def runtime_snapshot() -> dict[str, Any]:

@@ -16,8 +16,10 @@ from app.services.conversation_db import conversation_message_count
 from app.services.learning_service import get_user_pedagogy_public, get_user_skills_summary
 from app.services.llm.global_call import chat_completion_global_async
 from app.services.llm.runtime import (
+    get_configured_tutor_ollama_model,
     get_effective_ollama_model,
     get_effective_provider,
+    list_ollama_models,
     ping_ollama,
     runtime_snapshot,
     set_runtime_ollama_model,
@@ -240,12 +242,24 @@ def admin_llm_status(_: User = Depends(get_current_admin)):
     snap = runtime_snapshot()
     prov = get_effective_provider()
     ollama_model = get_effective_ollama_model()
+    tutor_model = get_configured_tutor_ollama_model()
+    discovered_models = list_ollama_models()
+    recommended_models = [
+        "qwen2.5:7b-instruct",
+        "llama3.1:8b",
+        tutor_model,
+    ]
+    merged_models = sorted(
+        {m for m in [*discovered_models, *recommended_models, ollama_model] if isinstance(m, str) and m}
+    )
     return {
         "effective_provider": prov,
         "provider_override": snap["provider_override"],
         "env_llm_provider": s.llm_provider,
         "ollama_base_url": s.ollama_base_url,
         "ollama_model": ollama_model,
+        "ollama_tutor_model": tutor_model,
+        "ollama_models": merged_models,
         "ollama_model_override": snap["ollama_model_override"],
         "ollama_reachable": ping_ollama(),
         "openrouter_configured": bool(os.getenv("OPENROUTER_API_KEY", "").strip()),

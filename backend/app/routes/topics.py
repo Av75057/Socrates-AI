@@ -15,6 +15,7 @@ from app.db.session import get_db
 from app.deps import redis_dep
 from app.models.state import TutorState
 from app.services.conversation_db import append_tutor_opening, conversation_message_count, create_conversation
+from app.services.learning_service import normalize_learning_objectives
 from app.services.redis_state import save_state
 from app.services.topic_cache import invalidate_topics_cache, read_topics_cache, write_topics_cache
 
@@ -25,6 +26,9 @@ class TopicProgressOut(BaseModel):
     completed: bool = False
     last_used: str | None = None
     rating: int | None = None
+    mastery_score: int = 0
+    last_assessed_at: str | None = None
+    goals_state: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class TopicOut(BaseModel):
@@ -34,6 +38,7 @@ class TopicOut(BaseModel):
     initial_prompt: str
     difficulty: int
     tags: list[str] = Field(default_factory=list)
+    learning_objectives: list[dict[str, Any]] = Field(default_factory=list)
     is_premium: bool = False
     usage_count: int = 0
     is_active: bool = True
@@ -90,6 +95,7 @@ def _serialize_topic(topic: Topic, user: User | None, progress: UserTopicProgres
         "initial_prompt": topic.initial_prompt,
         "difficulty": int(topic.difficulty or 1),
         "tags": _normalize_tags(topic.tags),
+        "learning_objectives": normalize_learning_objectives(topic.learning_objectives),
         "is_premium": bool(topic.is_premium),
         "usage_count": int(topic.usage_count or 0),
         "is_active": bool(topic.is_active),
@@ -100,6 +106,9 @@ def _serialize_topic(topic: Topic, user: User | None, progress: UserTopicProgres
             "completed": bool(progress.completed),
             "last_used": progress.last_used.isoformat() if progress and progress.last_used else None,
             "rating": progress.rating if progress else None,
+            "mastery_score": int(progress.mastery_score or 0),
+            "last_assessed_at": progress.last_assessed_at.isoformat() if progress and progress.last_assessed_at else None,
+            "goals_state": progress.goals_state if isinstance(progress.goals_state, list) else [],
         }
         if progress is not None
         else None,
@@ -284,6 +293,9 @@ async def start_topic(
             completed=False,
             last_used=now,
             rating=None,
+            mastery_score=0,
+            goals_state=[],
+            last_assessed_at=None,
         )
         db.add(progress)
     else:
@@ -291,7 +303,11 @@ async def start_topic(
     db.commit()
     db.refresh(conversation)
 
-    state = TutorState(topic=topic.title, history=[{"role": "assistant", "content": topic.initial_prompt.strip()}])
+    state = TutorState(
+        topic=topic.title,
+        topic_id=topic.id,
+        history=[{"role": "assistant", "content": topic.initial_prompt.strip()}],
+    )
     await save_state(r, session_key, state)
     await invalidate_topics_cache(r)
 

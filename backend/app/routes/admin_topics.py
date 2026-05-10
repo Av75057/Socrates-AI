@@ -12,6 +12,7 @@ from app.db.models import Topic, User
 from app.db.session import get_db
 from app.deps import redis_dep
 from app.routes.topics import TopicListResponse, TopicOut
+from app.services.learning_service import normalize_learning_objectives
 from app.services.topic_cache import invalidate_topics_cache
 from app.services.topic_generator import generate_topic_draft
 
@@ -24,6 +25,7 @@ class TopicUpsertBody(BaseModel):
     initial_prompt: str = Field(..., min_length=3, max_length=8000)
     difficulty: int = Field(2, ge=1, le=5)
     tags: list[str] = Field(default_factory=list)
+    learning_objectives: list[dict[str, Any]] = Field(default_factory=list)
     is_premium: bool = False
     is_active: bool = True
 
@@ -57,6 +59,7 @@ def _serialize_topic(topic: Topic) -> dict[str, Any]:
         "initial_prompt": topic.initial_prompt,
         "difficulty": int(topic.difficulty or 1),
         "tags": _normalize_tags(topic.tags),
+        "learning_objectives": normalize_learning_objectives(topic.learning_objectives),
         "is_premium": bool(topic.is_premium),
         "usage_count": int(topic.usage_count or 0),
         "is_active": bool(topic.is_active),
@@ -117,6 +120,7 @@ async def admin_create_topic(
         initial_prompt=body.initial_prompt.strip(),
         difficulty=body.difficulty,
         tags=_normalize_tags(body.tags),
+        learning_objectives=normalize_learning_objectives(body.learning_objectives),
         is_premium=body.is_premium,
         is_active=body.is_active,
         created_by=user.id,
@@ -144,6 +148,7 @@ async def admin_update_topic(
     topic.initial_prompt = body.initial_prompt.strip()
     topic.difficulty = body.difficulty
     topic.tags = _normalize_tags(body.tags)
+    topic.learning_objectives = normalize_learning_objectives(body.learning_objectives)
     topic.is_premium = body.is_premium
     topic.is_active = body.is_active
     db.commit()
@@ -180,6 +185,7 @@ async def admin_generate_topic(
         initial_prompt=str(draft.get("initial_prompt") or "").strip(),
         difficulty=int(draft.get("difficulty") or 2),
         tags=_normalize_tags(draft.get("tags")),
+        learning_objectives=normalize_learning_objectives(draft.get("learning_objectives")),
         is_premium=False,
         is_active=True,
         model=str(draft.get("model") or ""),

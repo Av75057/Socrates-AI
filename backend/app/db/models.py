@@ -366,6 +366,7 @@ class Topic(Base):
     initial_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     difficulty: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
     tags: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
+    learning_objectives: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -396,6 +397,9 @@ class UserTopicProgress(Base):
     completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_used: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mastery_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    goals_state: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
+    last_assessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="topic_progress")
     topic: Mapped["Topic"] = relationship("Topic", back_populates="progress_rows")

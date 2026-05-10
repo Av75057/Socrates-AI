@@ -111,15 +111,28 @@ def build_prompt(
     russian_only: bool = True,
     fallacy_instruction: str = "",
     persistent_profile: str = "",
+    tutor_state: dict[str, Any] | None = None,
 ) -> str:
     topic_line = topic.strip() if topic.strip() else "не указана — уточни у пользователя тему в одном вопросе"
+    ts = tutor_state or {}
+    ts_topic = str(ts.get("topic") or topic_line)
+    ts_last_fallacy = str(ts.get("last_fallacy") or "нет")
+    ts_step = int(ts.get("step") or 0)
+    ts_attempted = list(ts.get("attempted_concepts") or [])
 
     base = f"""
 Ты — Socrates AI.
 
 Тема: {topic_line}
 
-{build_tutor_system_prompt(tutor_mode, difficulty_level)}
+{build_tutor_system_prompt(
+        tutor_mode,
+        difficulty_level,
+        topic=ts_topic,
+        last_fallacy=ts_last_fallacy,
+        step_count=ts_step,
+        attempted_concepts=ts_attempted,
+)}
 
 Язык и оформление (обязательно, без исключений):
 - Всегда отвечай только по-русски.

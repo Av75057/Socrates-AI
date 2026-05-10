@@ -6,6 +6,7 @@ from typing import Any, AsyncGenerator
 
 import httpx
 
+from app.config import get_settings
 from app.services.llm.base import BaseLLMProvider
 
 
@@ -49,13 +50,17 @@ class OpenRouterProvider(BaseLLMProvider):
         temperature: float = 0.7,
         max_tokens: int = 300,
     ) -> str:
+        settings = get_settings()
         if not self._api_key and "openrouter.ai" in self._api_url.lower():
             raise ValueError("OPENROUTER_API_KEY is not set")
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
+            "temperature": float(temperature if temperature is not None else settings.llm_temperature),
+            "top_p": settings.llm_top_p,
+            "max_tokens": int(max_tokens if max_tokens is not None else settings.llm_max_tokens),
+            "presence_penalty": settings.llm_presence_penalty,
+            "frequency_penalty": settings.llm_frequency_penalty,
         }
         async with httpx.AsyncClient(timeout=self._timeout_s) as client:
             r = await client.post(self._api_url, json=payload, headers=self._headers())
@@ -76,13 +81,17 @@ class OpenRouterProvider(BaseLLMProvider):
         temperature: float = 0.7,
         max_tokens: int = 300,
     ) -> AsyncGenerator[str, None]:
+        settings = get_settings()
         if not self._api_key and "openrouter.ai" in self._api_url.lower():
             raise ValueError("OPENROUTER_API_KEY is not set")
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
+            "temperature": float(temperature if temperature is not None else settings.llm_temperature),
+            "top_p": settings.llm_top_p,
+            "max_tokens": int(max_tokens if max_tokens is not None else settings.llm_max_tokens),
+            "presence_penalty": settings.llm_presence_penalty,
+            "frequency_penalty": settings.llm_frequency_penalty,
             "stream": True,
         }
         async with httpx.AsyncClient(timeout=self._timeout_s) as client:

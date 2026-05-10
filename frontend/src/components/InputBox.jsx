@@ -166,7 +166,7 @@ export default function InputBox({
       data-tour="chat-input"
       className="input-dock z-20 shrink-0 border-t border-slate-200 bg-slate-50/98 px-3 pt-2 backdrop-blur max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:right-0 lg:relative lg:px-4 dark:border-slate-800 dark:bg-[#020617]/98"
     >
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-2">
+      <div className="flex w-full flex-col gap-2">
         {topBar ? (
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/90 pb-1.5 dark:border-slate-800/70">
             {topBar}
