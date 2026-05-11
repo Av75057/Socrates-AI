@@ -107,7 +107,7 @@ def adaptive_difficulty_instruction(level: int | None) -> str:
 
 def _history_to_text(history: list[dict[str, Any]], max_messages: int = 10) -> str:
     lines: list[str] = []
-    for h in history[-max_messages:]:
+    for h in (history or [])[-max_messages:]:
         if not isinstance(h, dict):
             continue
         role = h.get("role")
@@ -136,11 +136,15 @@ def build_prompt(
     persistent_profile: str = "",
     tutor_state: dict[str, Any] | None = None,
 ) -> str:
-    topic_line = topic.strip() if topic.strip() else "не указана — уточни у пользователя тему в одном вопросе"
+    topic_text = str(topic or "").strip()
+    topic_line = topic_text if topic_text else "не указана — уточни у пользователя тему в одном вопросе"
     ts = tutor_state or {}
     ts_topic = str(ts.get("topic") or topic_line)
     ts_last_fallacy = str(ts.get("last_fallacy") or "нет")
-    ts_step = int(ts.get("step") or 0)
+    try:
+        ts_step = int(ts.get("step") or 0)
+    except (TypeError, ValueError):
+        ts_step = 0
     ts_attempted = list(ts.get("attempted_concepts") or [])
 
     base = f"""
@@ -216,7 +220,7 @@ def build_prompt(
     mem = (memory_block or "").strip()
     mem_part = f"\n{mem}\n" if mem else ""
 
-    history_text = _history_to_text(history, max_messages=10)
+    history_text = _history_to_text(history or [], max_messages=10)
     dialog_block = f"\nДиалог:\n{history_text}" if history_text else "\nДиалог: (пока пусто)"
 
     return (

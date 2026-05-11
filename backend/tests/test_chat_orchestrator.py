@@ -7,7 +7,9 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from app.dto.chat_schema import ChatResponse, FallacyOut, MemoryOut, PedagogyOut
+from app.models.state import TutorState
 from app.models.tutor_configuration import TutorConfiguration
+from app.models.user_memory import UserMemory
 from app.services.chat_orchestrator import ChatOrchestrator
 from app.services.state_machine import DialoguePhase
 
@@ -73,6 +75,11 @@ class _FakeController:
     last_prompt = None
     last_user_line = None
     last_mode = None
+
+
+class _FakeRouter:
+    async def generate(self, prompt: str, user_line: str, mode: str) -> str:
+        return "router reply should not be used"
 
 
 class TestChatOrchestrator(unittest.IsolatedAsyncioTestCase):
@@ -206,6 +213,39 @@ class TestChatOrchestrator(unittest.IsolatedAsyncioTestCase):
         orchestrator = ChatOrchestrator()
         orchestrator.normalize_phase_for_persistence(context)
         self.assertEqual(context.current_phase, DialoguePhase.AWAITING_ANSWER)
+
+    async def test_process_message_real_builder_and_controller_do_not_raise_runtime_contract_errors(self) -> None:
+        context = SimpleNamespace(
+            duplicate_response=None,
+            prepared_turn=SimpleNamespace(user_id="u-1"),
+            body=SimpleNamespace(action="none", session_id="sess-1", message="хочу изучить уравнения"),
+            active_conversation_id=11,
+            router=_FakeRouter(),
+            state=TutorState(phase=DialoguePhase.AWAITING_ANSWER),
+            current_phase=DialoguePhase.AWAITING_ANSWER,
+            msg_stripped="хочу изучить уравнения",
+            cheat=False,
+            idle_turn=False,
+            analysis=None,
+            latency_ms=0,
+            configuration=TutorConfiguration(),
+            memory=UserMemory(),
+            original_reply="",
+            db_user=None,
+        )
+        provider = _FakeProvider(context)
+        analyzer = _FakeAnalyzer()
+        composer = _FakeComposer()
+        orchestrator = ChatOrchestrator(
+            state_provider=provider,
+            answer_analyzer=analyzer,
+            response_composer=composer,
+            llm_call=lambda context, plan: _async_value("Хорошая попытка. Какое действие удобно сделать первым?"),
+        )
+
+        result = await orchestrator.process_message(context.body, object(), None, "corr-1")
+
+        self.assertEqual(result.response.reply, "Хорошая попытка. Какое действие удобно сделать первым?")
 
 
 async def _async_value(value):

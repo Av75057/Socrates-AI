@@ -127,14 +127,16 @@ def build_tutor_system_prompt(
     mode_key = (mode or TutorMode.FRIENDLY.value).strip().lower()
     mode_description = _MODE_DESCRIPTIONS.get(mode_key, _MODE_DESCRIPTIONS[TutorMode.FRIENDLY.value])
     difficulty_value = max(1, min(5, int(difficulty or 1)))
+    topic_text = str(topic or "обсуждаемая тема").strip() or "обсуждаемая тема"
+    fallacy_text = str(last_fallacy or "нет").strip() or "нет"
     skills_note = ""
     if user_skills:
         skills_note = "\nНавыки ученика: учитывай их как фон, но всё равно двигай диалог вперёд."
     prompt = build_socratic_system_prompt(
         level=difficulty_value,
         mode=mode_description,
-        topic=topic,
-        last_fallacy=last_fallacy,
+        topic=topic_text,
+        last_fallacy=fallacy_text,
         step_count=step_count,
         attempted_concepts=attempted_concepts,
     )

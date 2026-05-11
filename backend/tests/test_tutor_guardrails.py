@@ -9,7 +9,9 @@ from app.services.tutor_controller import TutorController
 from app.services.tutor_prompt import (
     build_tutor_system_prompt,
     is_invalid_tutor_reply,
+    is_repeating_question,
     is_tutor_answering_for_student,
+    postprocess_tutor_response,
 )
 
 
@@ -55,6 +57,33 @@ class TestTutorPromptGuardrails(unittest.TestCase):
         self.assertTrue(is_invalid_tutor_reply("Продифференцируем обе части уравнения по x и найдём производную."))
         self.assertTrue(is_invalid_tutor_reply("0 голосов. Лучший ответ. В категории Математика. 98 просмотров."))
         self.assertFalse(is_invalid_tutor_reply("Хорошо. Какое действие удобно сделать первым?"))
+
+    def test_repeating_question_detector(self) -> None:
+        self.assertTrue(
+            is_repeating_question(
+                "Какое действие удобно сделать первым в уравнении 3x + 5 = 20?",
+                "Какое действие удобно сделать первым в уравнении 3x + 5 = 20?",
+            )
+        )
+        self.assertFalse(
+            is_repeating_question(
+                "Какой следующий шаг поможет оставить x без коэффициента?",
+                "Какое действие удобно сделать первым в уравнении 3x + 5 = 20?",
+            )
+        )
+
+    def test_postprocess_tutor_response_returns_four_item_contract(self) -> None:
+        processed = postprocess_tutor_response(
+            "Правильный ответ: сначала вычтем 5.",
+            "Какое действие удобно сделать первым в уравнении 3x + 5 = 20?",
+        )
+
+        self.assertEqual(len(processed), 4)
+        text, repeated, answered_for_student, invalid = processed
+        self.assertEqual(text, "Правильный ответ: сначала вычтем 5.")
+        self.assertFalse(repeated)
+        self.assertTrue(answered_for_student)
+        self.assertFalse(invalid)
 
     def test_history_to_text_keeps_last_five_exchanges(self) -> None:
         history = []
