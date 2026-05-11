@@ -117,6 +117,7 @@ class DialogueStateProvider:
         configuration = TutorConfiguration(
             topic=state.topic,
             difficulty_level=pedagogy_state.difficulty_level,
+            adaptive_difficulty=None,
             tutor_mode=pedagogy_mode_str(pedagogy_state.mode),
             russian_only=russian_only,
             persistent_profile=persistent_profile,

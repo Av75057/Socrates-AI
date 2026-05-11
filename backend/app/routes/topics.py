@@ -15,7 +15,7 @@ from app.db.session import get_db
 from app.deps import redis_dep
 from app.models.state import TutorState
 from app.services.conversation_db import append_tutor_opening, conversation_message_count, create_conversation
-from app.services.learning_service import normalize_learning_objectives
+from app.services.learning_service import normalize_learning_objectives, recompute_topic_mastery_sync
 from app.services.redis_state import save_state
 from app.services.topic_cache import invalidate_topics_cache, read_topics_cache, write_topics_cache
 
@@ -285,21 +285,9 @@ async def start_topic(
 
     topic.usage_count = int(topic.usage_count or 0) + 1
     progress = db.get(UserTopicProgress, {"user_id": user.id, "topic_id": topic.id})
-    now = datetime.now(timezone.utc)
-    if progress is None:
-        progress = UserTopicProgress(
-            user_id=user.id,
-            topic_id=topic.id,
-            completed=False,
-            last_used=now,
-            rating=None,
-            mastery_score=0,
-            goals_state=[],
-            last_assessed_at=None,
-        )
-        db.add(progress)
-    else:
-        progress.last_used = now
+    if progress is not None:
+        progress.last_used = datetime.now(timezone.utc)
+    recompute_topic_mastery_sync(db, user.id, topic.id)
     db.commit()
     db.refresh(conversation)
 

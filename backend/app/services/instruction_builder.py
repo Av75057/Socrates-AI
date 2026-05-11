@@ -22,6 +22,7 @@ class InstructionBuilder:
         pedagogy = PedagogyTurnContext(
             tutor_mode=context.configuration.tutor_mode,
             difficulty_level=context.configuration.difficulty_level,
+            adaptive_difficulty=getattr(context.configuration, "adaptive_difficulty", False),
             russian_only=context.configuration.russian_only,
             fallacy_instruction=fallacy_instruction,
             persistent_profile=context.configuration.persistent_profile,

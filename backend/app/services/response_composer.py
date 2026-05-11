@@ -180,9 +180,11 @@ class TutorResponseComposer:
                 asyncio.create_task(_learning_bg())
 
         skill_tree = self._build_skill_tree(context)
+        adaptive_difficulty = getattr(getattr(context, "configuration", None), "adaptive_difficulty", None)
         pedagogy = PedagogyOut(
             mode=pedagogy_mode_str(context.pedagogy_state.mode),
             difficulty_level=context.pedagogy_state.difficulty_level,
+            adaptive_difficulty=adaptive_difficulty,
             last_response_depth=round(context.pedagogy_state.last_response_depth, 3),
             fallacy=_fallacy_out(context.analysis),
         )
@@ -210,9 +212,11 @@ class TutorResponseComposer:
 
     def build_duplicate_response(self, context: Any, stored_reply: str, stored_fallacy: dict[str, Any] | None, user_message_id: int, assistant_message_id: int) -> ChatResponse:
         skill_tree = self._build_skill_tree(context)
+        adaptive_difficulty = getattr(getattr(context, "configuration", None), "adaptive_difficulty", None)
         pedagogy = PedagogyOut(
             mode=pedagogy_mode_str(context.pedagogy_state.mode),
             difficulty_level=context.pedagogy_state.difficulty_level,
+            adaptive_difficulty=adaptive_difficulty,
             last_response_depth=round(context.pedagogy_state.last_response_depth, 3),
             fallacy=_fallacy_out(stored_fallacy),
         )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import replace
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -11,12 +12,19 @@ from app.dto.turn_result import TurnResult
 from app.logging_context import log_context
 from app.logging_setup import log_event
 from app.services.answer_analyzer import AnswerAnalyzer
+from app.services.adaptive_difficulty import (
+    get_skill_id_for_topic_id,
+    get_skill_mastery,
+    get_target_difficulty,
+    update_skill_mastery,
+)
 from app.services.dialogue_state import DialogueContext, DialogueStateProvider
 from app.services.llm.runtime import get_effective_provider
 from app.services.llm_logger import estimate_response_tokens, save_llm_log
 from app.services.response_composer import TutorResponseComposer
 from app.services.state_machine import DialoguePhase, validate_transition
 from app.services.tutor_controller import TutorController
+from app.db.session import SessionLocal
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +86,7 @@ class ChatOrchestrator:
             log_event(log, logging.INFO, "Turn started", action=context.body.action)
             controller = self.controller_factory(context.router)
             context.analysis = await self.answer_analyzer.analyze(context)
+            self.apply_adaptive_difficulty(context)
             self.advance_state_for_turn(context)
             plan = self.instruction_builder.build_prompt(context, controller)
             started_at = time.perf_counter()
@@ -89,6 +98,32 @@ class ChatOrchestrator:
             await self.state_provider.save(context)
             log_event(log, logging.INFO, "Turn completed", action=context.body.action, latency_ms=context.latency_ms)
             return TurnResult(response=response, mode=plan.mode, raw_reply=context.original_reply, latency_ms=context.latency_ms)
+
+    def apply_adaptive_difficulty(self, context: DialogueContext) -> None:
+        db_user = getattr(context, "db_user", None)
+        if db_user is None:
+            return
+        topic_id = getattr(context.state, "topic_id", None)
+        if topic_id is None:
+            return
+        with SessionLocal() as db:
+            skill_id = get_skill_id_for_topic_id(db, topic_id)
+            if not skill_id:
+                return
+            if context.analysis is not None and context.msg_stripped and not context.cheat and not context.idle_turn:
+                score = context.analysis.get("score")
+                if score is not None:
+                    mastery = update_skill_mastery(db, db_user.id, skill_id, float(score))
+                    db.commit()
+                else:
+                    mastery = get_skill_mastery(db, db_user.id, skill_id)
+            else:
+                mastery = get_skill_mastery(db, db_user.id, skill_id)
+        adaptive_difficulty = get_target_difficulty(mastery)
+        context.configuration = replace(
+            context.configuration,
+            adaptive_difficulty=adaptive_difficulty,
+        )
 
     async def finalize_stream_reply(self, context: DialogueContext, controller: TutorController, plan: Any, raw_reply: str) -> TurnResult:
         with log_context(

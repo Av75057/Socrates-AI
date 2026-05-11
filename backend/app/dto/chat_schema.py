@@ -48,6 +48,7 @@ class FallacyOut(BaseModel):
 class PedagogyOut(BaseModel):
     mode: str = "friendly"
     difficulty_level: int = 1
+    adaptive_difficulty: int | None = None
     last_response_depth: float = 0.0
     fallacy: FallacyOut = Field(default_factory=FallacyOut)
 

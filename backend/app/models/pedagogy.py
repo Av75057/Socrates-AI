@@ -21,6 +21,7 @@ class PedagogyTurnContext:
 
     tutor_mode: str = "friendly"
     difficulty_level: int = 1
+    adaptive_difficulty: int | None = None
     russian_only: bool = True
     fallacy_instruction: str = ""
     persistent_profile: str = ""

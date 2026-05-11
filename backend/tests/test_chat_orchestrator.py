@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
 from app.dto.chat_schema import ChatResponse, FallacyOut, MemoryOut, PedagogyOut
+from app.models.tutor_configuration import TutorConfiguration
 from app.services.chat_orchestrator import ChatOrchestrator
 from app.services.state_machine import DialoguePhase
 
@@ -88,6 +90,7 @@ class TestChatOrchestrator(unittest.IsolatedAsyncioTestCase):
             idle_turn=False,
             analysis=None,
             latency_ms=0,
+            configuration=TutorConfiguration(),
         )
         provider = _FakeProvider(context)
         analyzer = _FakeAnalyzer()
@@ -109,6 +112,54 @@ class TestChatOrchestrator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(builder.calls, ["build_prompt"])
         self.assertEqual(composer.calls, ["compose"])
         self.assertEqual(result.response.reply, "model reply")
+
+    async def test_process_message_applies_adaptive_difficulty_to_configuration(self) -> None:
+        context = SimpleNamespace(
+            duplicate_response=None,
+            prepared_turn=SimpleNamespace(user_id="u-1"),
+            body=SimpleNamespace(action="none", session_id="sess-1"),
+            active_conversation_id=11,
+            router=SimpleNamespace(),
+            state=SimpleNamespace(phase=DialoguePhase.AWAITING_ANSWER, mode="question", topic_id=16),
+            current_phase=DialoguePhase.AWAITING_ANSWER,
+            msg_stripped="answer",
+            cheat=False,
+            idle_turn=False,
+            analysis=None,
+            latency_ms=0,
+            db_user=SimpleNamespace(id=7),
+            configuration=TutorConfiguration(),
+        )
+        provider = _FakeProvider(context)
+        analyzer = _FakeAnalyzer()
+        builder = _FakeBuilder()
+        composer = _FakeComposer()
+        orchestrator = ChatOrchestrator(
+            state_provider=provider,
+            answer_analyzer=analyzer,
+            instruction_builder=builder,
+            response_composer=composer,
+            llm_call=lambda context, plan: _async_value("model reply"),
+            controller_factory=lambda router: _FakeController(),
+        )
+
+        with patch("app.services.chat_orchestrator.SessionLocal") as session_local, patch(
+            "app.services.chat_orchestrator.get_skill_id_for_topic_id",
+            return_value="structure_argument",
+        ), patch(
+            "app.services.chat_orchestrator.update_skill_mastery",
+            return_value=0.8,
+        ), patch(
+            "app.services.chat_orchestrator.get_skill_mastery",
+            return_value=0.8,
+        ):
+            fake_db = SimpleNamespace(commit=lambda: None)
+            session_local.return_value.__enter__.return_value = fake_db
+            session_local.return_value.__exit__.return_value = False
+
+            await orchestrator.process_message(context.body, object(), None, "corr-1")
+
+        self.assertEqual(context.configuration.adaptive_difficulty, 3)
 
     async def test_hint_from_persisted_correct_phase_recovers_to_awaiting_answer(self) -> None:
         context = SimpleNamespace(

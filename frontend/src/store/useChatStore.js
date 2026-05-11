@@ -159,6 +159,7 @@ export const useChatStore = create((set, get) => ({
   attempts: 0,
   frustration: 0,
   frustrationLevel: 0,
+  adaptiveDifficulty: null,
   userType: "lazy",
   memory: { ...EMPTY_MEMORY },
   skillTree: null,
@@ -290,6 +291,10 @@ export const useChatStore = create((set, get) => ({
           typeof payload.frustration_level === "number"
             ? payload.frustration_level
             : Math.min(3, payload.frustration ?? 0),
+        adaptiveDifficulty:
+          payload.pedagogy && Number.isFinite(payload.pedagogy.adaptive_difficulty)
+            ? Number(payload.pedagogy.adaptive_difficulty)
+            : s.adaptiveDifficulty,
         userType:
           payload.user_type && ["lazy", "anxious", "thinker"].includes(payload.user_type)
             ? payload.user_type
@@ -448,6 +453,7 @@ export const useChatStore = create((set, get) => ({
       attempts: 0,
       frustration: 0,
       frustrationLevel: 0,
+      adaptiveDifficulty: null,
       userType: "lazy",
       topic: "",
       sessionId: getOrCreateSessionId(null),
@@ -498,6 +504,7 @@ export const useChatStore = create((set, get) => ({
       attempts: 0,
       frustration: 0,
       frustrationLevel: 0,
+      adaptiveDifficulty: null,
       topic: "",
       skillTree: null,
       memory: s.memory,

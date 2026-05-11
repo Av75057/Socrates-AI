@@ -83,6 +83,28 @@ def difficulty_instruction(level: int) -> str:
 """.strip()
 
 
+def adaptive_difficulty_instruction(level: int | None) -> str:
+    if level == 1:
+        return """
+Адаптивная сложность вопроса — лёгкая:
+Задавай простые вопросы на базовое понимание терминов и ближайший смысл ответа.
+Можно использовать короткие наводящие формулировки и просить один конкретный пример.
+""".strip()
+    if level == 2:
+        return """
+Адаптивная сложность вопроса — средняя:
+Задавай вопросы на сравнение, объяснение причин и проверку связи между идеями.
+Избегай прямых подсказок, но можно попросить привести пример или различить два случая.
+""".strip()
+    if level == 3:
+        return """
+Адаптивная сложность вопроса — высокая:
+Задавай вопросы на перенос, синтез, противоречия и нестандартные случаи.
+Проси проверить скрытую предпосылку, крайний случай или применить идею в новом контексте.
+""".strip()
+    return ""
+
+
 def _history_to_text(history: list[dict[str, Any]], max_messages: int = 10) -> str:
     lines: list[str] = []
     for h in history[-max_messages:]:
@@ -108,6 +130,7 @@ def build_prompt(
     *,
     tutor_mode: str = "friendly",
     difficulty_level: int = 1,
+    adaptive_difficulty: int | None = None,
     russian_only: bool = True,
     fallacy_instruction: str = "",
     persistent_profile: str = "",
@@ -179,6 +202,9 @@ def build_prompt(
     tone = adapt_tone(user_type)
 
     ped_parts = [tutor_mode_instruction(tutor_mode), difficulty_instruction(difficulty_level)]
+    adaptive_instruction = adaptive_difficulty_instruction(adaptive_difficulty)
+    if adaptive_instruction:
+        ped_parts.append(adaptive_instruction)
     fi = (fallacy_instruction or "").strip()
     if fi:
         ped_parts.append("Особая задача этого ответа:\n" + fi)

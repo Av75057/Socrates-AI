@@ -21,9 +21,18 @@ function barColor(level) {
   return `hsl(${h}, 65%, 42%)`;
 }
 
+function adaptiveDifficultyLabel(level) {
+  if (level === 1) return "Лёгкий";
+  if (level === 2) return "Средний";
+  if (level === 3) return "Сложный";
+  return "Лёгкий";
+}
+
 function SkillRow({ skill }) {
   const tip = SKILL_TIPS[skill.skill_id] || "Практикуйся в диалогах с тьютором: навык растёт после осмысленных ответов.";
   const lv = Number(skill.level) || 0;
+  const mastery = Number.isFinite(Number(skill.mastery)) ? Math.round(Number(skill.mastery) * 100) : lv;
+  const adaptiveDifficulty = Number(skill.adaptive_difficulty) || (lv >= 67 ? 3 : lv >= 34 ? 2 : 1);
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/50">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -33,6 +42,10 @@ function SkillRow({ skill }) {
       {skill.description ? (
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{skill.description}</p>
       ) : null}
+      <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+        <span>Mastery: {mastery}%</span>
+        <span>Рекомендуемая сложность: {adaptiveDifficultyLabel(adaptiveDifficulty)}</span>
+      </div>
       <p className="mt-2 text-xs text-slate-500 dark:text-slate-500">Как прокачать: {tip}</p>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
         <motion.div

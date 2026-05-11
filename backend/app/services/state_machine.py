@@ -26,6 +26,7 @@ ALLOWED_TRANSITIONS: dict[DialoguePhase, set[DialoguePhase]] = {
         DialoguePhase.AWAITING_ANSWER,
         DialoguePhase.HINT_PROVIDED,
         DialoguePhase.ANSWER_ANALYZED,
+        DialoguePhase.GIVE_UP,
         DialoguePhase.CLOSING,
     },
     DialoguePhase.HINT_PROVIDED: {

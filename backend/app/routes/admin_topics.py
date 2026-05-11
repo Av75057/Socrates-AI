@@ -12,7 +12,10 @@ from app.db.models import Topic, User
 from app.db.session import get_db
 from app.deps import redis_dep
 from app.routes.topics import TopicListResponse, TopicOut
-from app.services.learning_service import normalize_learning_objectives
+from app.services.learning_service import (
+    normalize_learning_objectives,
+    recompute_topic_mastery_for_all_sync,
+)
 from app.services.topic_cache import invalidate_topics_cache
 from app.services.topic_generator import generate_topic_draft
 
@@ -151,6 +154,7 @@ async def admin_update_topic(
     topic.learning_objectives = normalize_learning_objectives(body.learning_objectives)
     topic.is_premium = body.is_premium
     topic.is_active = body.is_active
+    recompute_topic_mastery_for_all_sync(db, topic.id)
     db.commit()
     db.refresh(topic)
     await invalidate_topics_cache(r)

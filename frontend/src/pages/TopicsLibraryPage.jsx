@@ -3,8 +3,25 @@ import { Link, useNavigate } from "react-router-dom";
 import TopicCard from "../components/topics/TopicCard.jsx";
 import { fetchTopicTags, listTopics, startTopic } from "../api/topicsApi.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { useChatStore } from "../store/useChatStore.js";
 
 const PAGE_SIZE = 12;
+
+function messagesFromTopicStart(data) {
+  const text = (data?.opening_message || data?.first_message || "").trim();
+  if (!text) return [];
+  return [
+    {
+      id:
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `topic_${data.conversation_id}_${Date.now()}`,
+      role: "assistant",
+      text,
+      createdAt: Date.now(),
+    },
+  ];
+}
 
 function UpgradeModal({ open, onClose }) {
   if (!open) return null;
@@ -43,6 +60,7 @@ function UpgradeModal({ open, onClose }) {
 export default function TopicsLibraryPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const [items, setItems] = useState([]);
   const [tags, setTags] = useState([]);
   const [selectedTags, setSelectedTags] = useState([]);
@@ -118,6 +136,11 @@ export default function TopicsLibraryPage() {
     setStartingId(topic.id);
     try {
       const started = await startTopic(topic.id);
+      setActiveConversation(
+        started.conversation_id,
+        started.session_key,
+        messagesFromTopicStart(started),
+      );
       navigate(`/app?conversation=${started.conversation_id}`);
     } catch (e) {
       if (e?.status === 402) {

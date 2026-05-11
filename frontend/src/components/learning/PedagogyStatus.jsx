@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getUserPedagogy } from "../../api/userApi.js";
 import { useAuth } from "../../contexts/AuthContext.jsx";
+import { useChatStore } from "../../store/useChatStore.js";
+
+function adaptiveDifficultyLabel(level) {
+  if (level === 1) return "Лёгкий";
+  if (level === 2) return "Средний";
+  if (level === 3) return "Сложный";
+  return null;
+}
 
 export default function PedagogyStatus() {
   const { user } = useAuth();
+  const adaptiveDifficulty = useChatStore((s) => s.adaptiveDifficulty);
   const [ped, setPed] = useState(null);
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -43,6 +52,7 @@ export default function PedagogyStatus() {
   if (!user || !ped) return null;
 
   const diff = Math.max(1, Math.min(5, Number(ped.current_difficulty) || 1));
+  const adaptiveLabel = adaptiveDifficultyLabel(adaptiveDifficulty);
   const counts = ped.fallacy_counts && typeof ped.fallacy_counts === "object" ? ped.fallacy_counts : {};
   const entries = Object.entries(counts).filter(([k, v]) => k && Number(v) > 0);
 
@@ -66,9 +76,19 @@ export default function PedagogyStatus() {
             ★
           </span>
         ))}
+        {adaptiveLabel ? (
+          <span className="ml-2 rounded-full bg-cyan-100 px-1.5 py-0.5 text-[10px] font-medium text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-200">
+            {adaptiveLabel}
+          </span>
+        ) : null}
       </button>
       {open ? (
         <div className="absolute right-0 z-50 mt-1 w-64 rounded-lg border border-slate-200 bg-white p-3 text-left text-xs shadow-lg dark:border-slate-600 dark:bg-slate-900">
+          {adaptiveLabel ? (
+            <p className="mb-2 text-slate-600 dark:text-slate-300">
+              Адаптивная сложность вопросов: <span className="font-medium">{adaptiveLabel}</span>
+            </p>
+          ) : null}
           <p className="font-medium text-slate-800 dark:text-slate-100">Частота ошибок (всего)</p>
           {entries.length === 0 ? (
             <p className="mt-2 text-slate-500 dark:text-slate-400">Пока нет зафиксированных типов.</p>

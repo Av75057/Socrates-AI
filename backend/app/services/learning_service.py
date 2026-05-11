@@ -20,6 +20,7 @@ from app.config import get_settings
 from app.services.llm.global_call import chat_completion_global_sync
 from app.services.llm.runtime import get_effective_ollama_model, get_effective_provider
 from app.db.models import Conversation, Skill, Topic, User, UserPedagogy, UserSkill, UserTopicProgress
+from app.services.adaptive_difficulty import skill_progress_payload
 from app.services.conversation_db import display_title_for_conversation
 
 log = logging.getLogger(__name__)
@@ -255,6 +256,18 @@ def recompute_topic_mastery_sync(db: Session, user_id: int, topic_id: int) -> No
     progress.last_used = now
 
 
+def recompute_topic_mastery_for_all_sync(db: Session, topic_id: int) -> None:
+    user_ids = (
+        db.execute(
+            select(UserTopicProgress.user_id).where(UserTopicProgress.topic_id == topic_id)
+        )
+        .scalars()
+        .all()
+    )
+    for user_id in user_ids:
+        recompute_topic_mastery_sync(db, int(user_id), topic_id)
+
+
 def update_user_learning_progress_sync(
     user_id: int,
     user_text: str,
@@ -385,6 +398,7 @@ def get_user_skills_summary(db: Session, user_id: int) -> list[dict[str, Any]]:
                 "name": sk.name,
                 "description": sk.description or "",
                 "level": us.level,
+                **skill_progress_payload(int(us.level or 0)),
             }
         )
     return out
